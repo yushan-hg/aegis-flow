@@ -13,12 +13,13 @@ const store = {
 const state = {
   tab: store.get('tab', 'swap'),
   data: store.get('data', null),            // { filename, loadedAt, main, hsd }
-  doiBan: store.get('doiban', null),        // { filename, dict }
-  vitri: store.get('vitri', null),          // { filename, byMa, byTen }
+  doiBan: store.get('doiban', null),        // { filename, dict, source }
+  vitri: store.get('vitri', null),          // { filename, byMa, byTen, source }
   manual: store.get('manual', {}),          // nhập tay PCHome: { [tên hàng]: { per, layers, full } }
   ticks: store.get('ticks', {}),            // đã xong: { [khoá]: 1 }
   q: '', filter: 'all',
   hsdXe: '',                                // xe đang xem ở tab In HSD ('' = chưa chọn xe)
+  open: new Set(),                          // các mặt hàng PCHome đang mở hàng ô nhập (trong phiên)
 };
 
 // ── Thông báo ngắn ──
@@ -33,11 +34,8 @@ function toast(msg, err = false, ms = 5000) {
 async function importFiles(files) {
   const done = [], fail = [];
   for (const f of files) {
-    try {
-      const buf = await f.arrayBuffer();
-      const msg = importBuffer(buf, f.name);
-      done.push(msg);
-    } catch (e) { fail.push(`${f.name}: ${e.message || e}`); }
+    try { done.push(importBuffer(await f.arrayBuffer(), f.name)); }
+    catch (e) { fail.push(`${f.name}: ${e.message || e}`); }
   }
   render();
   if (fail.length) toast(fail.join('\n'), true, 9000);
@@ -54,6 +52,7 @@ export function importBuffer(buf, name) {
     state.data = { filename: name, loadedAt: Date.now(), main, hsd };
     if (!store.set('data', state.data)) toast('Máy không lưu nổi dữ liệu — vẫn dùng được nhưng mở lại phải nạp lại.', true);
     state.ticks = {}; store.set('ticks', state.ticks);       // sang ngày mới thì xoá dấu ✓ cũ
+    state.hsdXe = '';
     return `Dữ liệu: ${name} (${main.length} dòng, ${hsd.length} dòng HSD)`;
   }
   if (kind === 'vitri') {
@@ -69,112 +68,100 @@ export function importBuffer(buf, name) {
   throw new Error('không nhận ra loại file (cần file dữ liệu ngày, vi_tri_kho_config hoặc doi_ban_config)');
 }
 
-// ── Cấu hình có sẵn trong app (config.json): dùng làm mặc định; file nạp tay thì ghi đè, đến khi bấm "Dùng bản có sẵn" ──
+// ── Cấu hình có sẵn trong app (config.json): dùng làm mặc định; file nạp tay thì ghi đè ──
 async function loadBundledConfig() {
   try {
     const r = await fetch('config.json', { cache: 'no-cache' });
     if (!r.ok) return false;
     const b = await r.json();
     let changed = false;
-    if (b.vitri && state.vitri?.source !== 'import') {
-      state.vitri = { ...b.vitri, source: 'bundled' }; store.set('vitri', state.vitri); changed = true;
-    }
-    if (b.doiBan && state.doiBan?.source !== 'import') {
-      state.doiBan = { ...b.doiBan, source: 'bundled' }; store.set('doiban', state.doiBan); changed = true;
-    }
+    if (b.vitri && state.vitri?.source !== 'import') { state.vitri = { ...b.vitri, source: 'bundled' }; store.set('vitri', state.vitri); changed = true; }
+    if (b.doiBan && state.doiBan?.source !== 'import') { state.doiBan = { ...b.doiBan, source: 'bundled' }; store.set('doiban', state.doiBan); changed = true; }
     return changed;
   } catch { return false; }
 }
+
+// ── Mảnh giao diện dùng chung ──
+const kpi = cells => `<div class="kpi">${cells.map(([v, l, c]) => `<div class="${c || ''}"><b>${v}</b><small>${l}</small></div>`).join('')}</div>`;
+const pct = (d, t) => (t ? Math.round(100 * d / t) : 0);
+const bar = (d, t) => `<div class="bar"><i style="width:${pct(d, t)}%"></i></div>`;
+const tools = (placeholder, segs) => `<div class="tools"><input class="search" id="q" type="search" placeholder="${placeholder}" value="${esc(state.q)}" autocomplete="off" autocapitalize="off">
+  ${segs ? `<div class="seg">${segs.map(([k, l]) => `<button data-f="${k}" class="${state.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}</div>`;
+const needData = what => `<div class="empty">Chưa có ${what}.<br>Bấm <b>Nạp file</b> ở góc trên rồi chọn file Excel.</div>`;
 
 // ── Màn hình ──
 function render() {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
   $('#fileName').textContent = state.data ? state.data.filename : 'Chưa nạp file';
-  const v = $('#view');
-  v.innerHTML = state.tab === 'swap' ? renderSwap() : state.tab === 'pchome' ? renderPchome()
-              : state.tab === 'hsd' ? renderHsd() : renderSettings();
-  if (state.tab === 'pchome') updateTotals();
-}
-
-function needData(what) {
-  return `<div class="empty">Chưa có ${what}.<br>Bấm <b>Nạp file</b> ở góc trên rồi chọn file Excel.<br>
-    <span class="muted">Chọn được nhiều file một lần.</span></div>`;
+  $('#view').innerHTML = state.tab === 'swap' ? renderSwap() : state.tab === 'pchome' ? renderPchome()
+                       : state.tab === 'hsd' ? renderHsd() : renderSettings();
 }
 
 // ── Tab Đổi bản ──
-function swapRows() {
-  const rows = core.buildSwap(state.data.main, state.data.hsd, state.doiBan.dict);
-  const q = state.q.trim().toLowerCase();
-  return rows.filter(r => (!q || [r.xe, r.khach, r.ten, r.ma, r.don].join(' ').toLowerCase().includes(q))
-                       && (state.filter !== 'todo' || !state.ticks['s|' + r.xe + '|' + r.don + '|' + r.ma]));
-}
+const swapKey = r => 's|' + r.xe + '|' + r.don + '|' + r.ma;
 
 function renderSwap() {
   if (!state.data) return needData('dữ liệu hôm nay');
-  if (!state.doiBan) return needData('danh sách đổi bản (file <b>doi_ban_config.xlsx</b>)');
-  const rows = swapRows();
+  if (!state.doiBan) return needData('danh sách đổi bản (<b>doi_ban_config.xlsx</b>)');
   const all = core.buildSwap(state.data.main, state.data.hsd, state.doiBan.dict);
-  const left = all.filter(r => !state.ticks['s|' + r.xe + '|' + r.don + '|' + r.ma]).length;
-  let h = `<div class="tools"><input class="search" id="q" type="search" placeholder="Tìm xe, khách, tên hàng…" value="${esc(state.q)}" autocomplete="off">
-    <div class="seg"><button data-f="all" class="${state.filter === 'all' ? 'on' : ''}">Tất cả</button>
-    <button data-f="todo" class="${state.filter === 'todo' ? 'on' : ''}">Chưa xong (${left})</button></div></div>
-    <div class="summary">${all.length} dòng đổi bản · ${new Set(all.map(r => r.xe)).size} xe · còn ${left} chưa xong</div>`;
+  const doneN = all.filter(r => state.ticks[swapKey(r)]).length;
+  const q = state.q.trim().toLowerCase();
+  const rows = all.filter(r => (!q || [r.xe, r.khach, r.ten, r.ma, r.don].join(' ').toLowerCase().includes(q))
+                            && (state.filter !== 'todo' || !state.ticks[swapKey(r)]));
+  let h = kpi([[all.length, 'dòng'], [new Set(all.map(r => r.xe)).size, 'xe'], [`${doneN}/${all.length}`, 'xong', doneN === all.length && all.length ? 'g' : '']])
+        + tools('Tìm xe, khách, tên hàng…', [['all', 'Tất cả'], ['todo', 'Chưa xong']]);
   if (!rows.length) return h + `<div class="empty">${all.length ? 'Không có dòng nào khớp.' : 'Hôm nay không có hàng cần đổi bản.'}</div>`;
   const byXe = new Map();
   for (const r of rows) (byXe.get(r.xe) ?? byXe.set(r.xe, []).get(r.xe)).push(r);
   for (const [xe, list] of byXe) {
-    h += `<section class="group"><h3>${esc(xe)} <small>${list.length} dòng</small></h3>`;
+    const d = list.filter(r => state.ticks[swapKey(r)]).length;
+    h += `<section class="grp"><h3><span class="x">${esc(xe)}</span><span class="g">${d}/${list.length}</span></h3>${bar(d, list.length)}`;
     for (const r of list) {
-      const k = 's|' + r.xe + '|' + r.don + '|' + r.ma;
-      const hsd = r.hsd ? `<div class="hsd">${esc(r.hsd.split(/[\/+]/).join('\n'))}</div>` : '';
-      h += `<div class="row${state.ticks[k] ? ' done' : ''}" data-tick="${esc(k)}">
-        <span class="ck">✓</span>
-        <div class="main"><div class="name">${esc(r.ten)}</div>
-          <div class="sub">${esc(r.khach)}<br><span class="mono">${esc(r.don)} · ${esc(r.ma)}</span> · ${r.pallet} 板</div>
-          <div class="sub"><span class="tag">${esc(r.swap)}</span></div>${hsd}</div>
-        <div class="qty">${r.qty}</div></div>`;
+      const hsd = r.hsd ? `<div class="hs">${esc(r.hsd.split(/[\/+]/).join('  '))}</div>` : '';
+      h += `<div class="r${state.ticks[swapKey(r)] ? ' done' : ''}" data-tick="${esc(swapKey(r))}"><span class="ck">✓</span>
+        <div class="m"><div class="t"><b>${esc(r.ten)}</b><span class="tag">${esc(r.swap)}</span></div>
+          <div class="s">${esc(r.khach)} · ${esc(r.don)} · ${esc(r.ma)} · ${r.pallet}板</div>${hsd}</div>
+        <div class="q">${r.qty}</div></div>`;
     }
     h += '</section>';
   }
   return h;
 }
 
-// ── Tab In HSD: hàng có hạn sử dụng làm đầu ca, xem theo xe rồi theo đơn ──
+// ── Tab In HSD: hàng có hạn sử dụng làm đầu ca, theo xe rồi theo đơn ──
+const hsdKey = (xe, r) => 'h|' + xe + '|' + r.don + '|' + r.ma + '|' + r.hsd;
+
 function renderHsd() {
   if (!state.data) return needData('dữ liệu hôm nay');
   const list = core.buildHsd(state.data.hsd, state.vitri || { byMa: {}, byTen: {} });
   if (!list.length) return `<div class="empty">File này không có hàng có hạn sử dụng (sheet HSD).</div>`;
-  const keyOf = (xe, r) => 'h|' + xe + '|' + r.don + '|' + r.ma + '|' + r.hsd;
+  const left = x => x.dons.reduce((s, d) => s + d.rows.filter(r => !state.ticks[hsdKey(x.xe, r)]).length, 0);
+  const total = list.reduce((s, x) => s + x.count, 0), totalLeft = list.reduce((s, x) => s + left(x), 0);
   const q = state.q.trim().toLowerCase();
 
   if (!state.hsdXe || !list.some(x => x.xe === state.hsdXe)) {
-    // Chưa chọn xe: gõ vài số của biển số để lọc, bấm vào xe để mở
     const shown = list.filter(x => !q || x.xe.toLowerCase().includes(q));
-    let h = `<div class="tools"><input class="search" id="q" type="search" inputmode="search" placeholder="Gõ số xe, vd 9911…" value="${esc(state.q)}" autocomplete="off"></div>
-      <div class="summary">${list.length} xe có hàng HSD · ${list.reduce((s, x) => s + x.count, 0)} dòng</div>`;
+    let h = kpi([[list.length, 'xe'], [total, 'dòng'], [`${total - totalLeft}/${total}`, 'xong', totalLeft === 0 ? 'g' : '']]) + tools('Gõ số xe, vd 9911…');
     if (!shown.length) return h + '<div class="empty">Không có xe nào khớp.</div>';
-    h += '<div class="chips">' + shown.map(x => {
-      const left = x.dons.reduce((s, d) => s + d.rows.filter(r => !state.ticks[keyOf(x.xe, r)]).length, 0);
-      return `<button class="chip" data-xe="${esc(x.xe)}"><b>${esc(x.xe)}</b><small>${x.count} dòng${left < x.count ? ` · còn ${left}` : ''}</small></button>`;
+    return h + '<div class="chips">' + shown.map(x => {
+      const l = left(x);
+      return `<button class="chip" data-xe="${esc(x.xe)}"><b>${esc(x.xe)}</b><small>${x.count} dòng${l < x.count ? ` · còn ${l}` : ''}</small></button>`;
     }).join('') + '</div>';
-    return h;
   }
 
-  const x = list.find(v => v.xe === state.hsdXe);
-  const left = x.dons.reduce((s, d) => s + d.rows.filter(r => !state.ticks[keyOf(x.xe, r)]).length, 0);
-  let h = `<div class="tools"><button class="btn small" id="hsdBack">← Chọn xe khác</button></div>
-    <div class="summary">${esc(x.xe)} · ${x.dons.length} đơn · ${x.count} dòng · còn ${left} chưa xong</div>`;
+  const x = list.find(v => v.xe === state.hsdXe), l = left(x);
+  let h = `<div class="tools"><button class="btn" id="hsdBack">← Xe khác</button><span class="ctx" style="margin:0;flex:1;text-align:right"><b class="mono">${esc(x.xe)}</b></span></div>`
+        + kpi([[x.dons.length, 'đơn'], [x.count, 'dòng'], [`${x.count - l}/${x.count}`, 'xong', l === 0 ? 'g' : '']]);
   for (const d of x.dons) {
-    h += `<section class="group"><h3>${esc(d.don)} <small>${esc(d.khach)}</small></h3>`;
+    const dn = d.rows.filter(r => state.ticks[hsdKey(x.xe, r)]).length;
+    h += `<section class="grp"><h3><span class="x">${esc(d.don)}</span><span class="g">${esc(d.khach)} · ${dn}/${d.rows.length}</span></h3>${bar(dn, d.rows.length)}`;
     for (const r of d.rows) {
-      const k = keyOf(x.xe, r);
-      const hsd = r.hsd ? `<div class="hsd">${esc(r.hsd.split(/[\/+]/).join('\n'))}</div>` : '';
-      h += `<div class="row${state.ticks[k] ? ' done' : ''}" data-tick="${esc(k)}">
-        <span class="ck">✓</span>
-        <div class="main"><div class="name">${esc(r.ten)}</div>
-          <div class="sub"><span class="mono">${esc(r.loc)} · ${esc(r.ma)}</span></div>${hsd}
-          ${r.desc ? `<div class="sub">${esc(r.desc)}</div>` : ''}</div>
-        <div class="qty">${r.qty}</div></div>`;
+      const k = hsdKey(x.xe, r);
+      h += `<div class="r${state.ticks[k] ? ' done' : ''}" data-tick="${esc(k)}"><span class="ck">✓</span>
+        <div class="m"><div class="t"><b>${esc(r.ten)}</b><span class="s mono" style="flex:none">${esc(r.loc)}</span></div>
+          <div class="hs">${esc(r.hsd.split(/[\/+]/).join('  ') || '—')}</div>
+          <div class="s">${esc(r.ma)}${r.desc ? ' · ' + esc(r.desc) : ''}</div></div>
+        <div class="q">${r.qty}</div></div>`;
     }
     h += '</section>';
   }
@@ -186,60 +173,57 @@ function pchomeItems() {
   return core.buildPchome(state.data.main, state.data.hsd, state.vitri || { byMa: {}, byTen: {} }, state.manual);
 }
 
+function pchomeTotals(items) {
+  let full = 0, loose = 0, pull = 0, need = 0;
+  for (const it of items) { const c = core.calcItem(it); full += c.nFull; loose += c.nLoose; pull += c.nPull; if (!c.complete) need++; }
+  return { full, loose, pull, need };
+}
+
 function renderPchome() {
   if (!state.data) return needData('dữ liệu hôm nay');
   const items = pchomeItems();
   if (!items.length) return `<div class="empty">File này không có hàng của ${core.PCHOME}.</div>`;
+  const rows = state.data.main.filter(r => core.isPchome(r.khach));
+  const t = pchomeTotals(items);
   const q = state.q.trim().toLowerCase();
   const shown = items.filter(it => {
-    const c = core.calcItem(it);
     if (q && !(it.ten + ' ' + it.codes.join(' ')).toLowerCase().includes(q)) return false;
-    return state.filter === 'all' || (state.filter === 'need' ? !c.complete : c.complete);
+    return state.filter !== 'need' || !core.calcItem(it).complete;
   });
-  const orders = new Set(state.data.main.filter(r => core.isPchome(r.khach)).map(r => r.don)).size;
-  const xes = [...new Set(state.data.main.filter(r => core.isPchome(r.khach)).map(r => r.xe))];
-  const noCfg = !state.vitri ? `<div class="warnline" style="margin:0 2px 10px">Chưa nạp <b>vi_tri_kho_config.xlsx</b> — 整板書量 và 底高 phải nhập tay.</div>` : '';
-  let h = `<div class="tools"><input class="search" id="q" type="search" placeholder="Tìm mã hoặc tên hàng…" value="${esc(state.q)}" autocomplete="off">
-    <div class="seg"><button data-f="all" class="${state.filter === 'all' ? 'on' : ''}">Tất cả</button>
-    <button data-f="ok" class="${state.filter === 'ok' ? 'on' : ''}">Đủ thông số</button>
-    <button data-f="need" class="${state.filter === 'need' ? 'on' : ''}">Cần nhập</button></div></div>
-    <div class="summary" id="sum"></div>${noCfg}`;
+  let h = `<div id="pk">${pcKpi(t)}</div>
+    <div class="ctx">${core.PCHOME} · ${new Set(rows.map(r => r.don)).size} đơn · ${esc([...new Set(rows.map(r => r.xe))].join(', '))}${state.vitri ? '' : ' · <span class="no">chưa có file vị trí kho</span>'}</div>`
+    + tools('Tìm mã / tên hàng…', [['all', 'Tất cả'], ['need', 'Cần nhập']]);
   if (!shown.length) return h + '<div class="empty">Không có mặt hàng nào khớp.</div>';
-  h += shown.map(it => cardHtml(it, orders, xes)).join('');
-  return h;
+  h += `<div class="ph"><span>Hàng</span><span>Cần</span><span>HSD</span><span>Bốc</span><span>Lôi</span></div>`;
+  return h + shown.map(pcBlock).join('');
 }
 
-function cardHtml(it) {
-  const c = core.calcItem(it);
-  const key = it.ten;
-  const miss = v => (v > 0 ? '' : ' miss');
-  const multi = it.lots.length > 1;
-  const lots = c.lots.map(l => {
-    const tk = 'p|' + key + '|' + l.code;
-    return `<div class="l${state.ticks[tk] ? ' done' : ''}" data-tick="${esc(tk)}">
-      <span class="ck">✓</span>
-      <span class="code">${esc(l.code || '—')}${multi ? ` <small>*${l.qty}</small>` : ''}</span>
-      <span class="res">${esc(l.out)}</span><span class="pull">${l.pull ?? '—'}</span></div>`;
+const pcKpi = t => kpi([[`${t.full}/${t.loose}`, 'bốc ra bản/lẻ'], [t.pull, 'lôi ra (bản)'], [t.need, 'thiếu thông số', t.need ? 'w' : 'g']]);
+
+function pcBlock(it) {
+  const c = core.calcItem(it), L = c.lots.length, key = it.ten;
+  const box = (f, v) => `<input data-f="${f}" class="${v > 0 ? '' : 'miss'}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${v || ''}" placeholder="?">`;
+  const cells = c.lots.map((l, i) => {
+    const tk = 'p|' + key + '|' + l.code, on = state.ticks[tk] ? ' done' : '';
+    return `<span class="hs${on}" data-tick="${esc(tk)}" style="grid-column:3;grid-row:${i + 1}">${esc(l.code || '—')}${L > 1 ? `*${l.qty}` : ''}</span>`
+         + `<span class="rs${on}" data-tick="${esc(tk)}" data-i="${i}" style="grid-column:4;grid-row:${i + 1}">${esc(l.out)}</span>`
+         + `<span class="pl${on}" data-tick="${esc(tk)}" data-i="${i}" style="grid-column:5;grid-row:${i + 1}">${l.pull ?? '—'}</span>`;
   }).join('');
-  return `<article class="card" data-key="${esc(key)}">
-    <div class="head"><span class="nm">${esc(it.ten)}</span><span class="need">${it.qty}</span></div>
-    <div class="meta">${esc(it.codes.join(', '))}</div>
-    ${it.mismatch ? `<div class="warnline">Tổng các hạn dùng không bằng số lượng — kiểm tra lại cột HSD.</div>` : ''}
-    <div class="inputs">
-      <label>整板書量<input data-f="full" class="${miss(c.full)}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${c.full || ''}" placeholder="?"></label>
-      <label>底<input data-f="per" class="${miss(c.per)}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${c.per || ''}" placeholder="?"></label>
-      <span class="x">×</span>
-      <label>高<input data-f="layers" class="${miss(c.layers)}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${c.layers || ''}" placeholder="?"></label>
-    </div>
-    <div class="lots"><div class="h"><span></span><span>HSD</span><span>Bốc ra</span><span>Lôi ra</span></div>${lots}</div>
+  // Đủ thông số thì chỉ hiện gọn "整板 · 底×高" dưới tên; thiếu thông số (hoặc bấm vào tên) mới mở hàng ô nhập
+  const open = !c.complete || state.open.has(key);
+  const spec = c.complete ? ` · ${c.full} · ${c.per}×${c.layers}` : '';
+  return `<article class="p" data-key="${esc(key)}">
+    <div class="n" data-open="${esc(key)}" style="grid-row:1 / span ${L}"><b>${esc(it.ten)}</b>${it.mismatch ? ' <span class="mm" title="Tổng các hạn dùng không bằng số lượng">⚠</span>' : ''}<small>${esc(it.codes.join(','))}${spec}</small></div>
+    <div class="need" style="grid-row:1 / span ${L}">${it.qty}</div>${cells}
+    ${open ? `<div class="sp" style="grid-row:${L + 1}"><label>整板${box('full', c.full)}</label><label>底${box('per', c.per)}</label>×<label>高${box('layers', c.layers)}</label><span class="cap">${c.cap ? '=' + c.cap + '/bản' : 'chưa cài'}</span></div>` : ''}
   </article>`;
 }
 
-/** Sửa 1 ô: ghi nhập tay (chỉ giá trị khác file cấu hình), tính lại đúng thẻ đó — không dựng lại cả danh sách để không mất con trỏ. */
+/** Sửa 1 ô: ghi nhập tay (chỉ giá trị khác file cấu hình), cập nhật đúng khối đó — không dựng lại danh sách để không mất con trỏ. */
 function onInput(e) {
   const inp = e.target;
   if (!inp.dataset.f) return;
-  const card = inp.closest('.card'); const key = card.dataset.key;
+  const card = inp.closest('.p'); const key = card.dataset.key;
   const item = pchomeItems().find(i => i.ten === key); if (!item) return;
   inp.value = inp.value.replace(/\D/g, '');
   const get = f => parseInt(card.querySelector(`[data-f="${f}"]`).value, 10) || 0;
@@ -250,48 +234,39 @@ function onInput(e) {
   if (baseManual || fullManual) state.manual[key] = { per: baseManual ? per : 0, layers: baseManual ? layers : 0, full: fullManual ? full : 0 };
   else delete state.manual[key];
   store.set('manual', state.manual);
-  const fresh = { ...item, manual: state.manual[key] || null };
-  const c = core.calcItem(fresh);
-  // Ô nào chưa đủ thì viền vàng; ô đang gõ giữ nguyên chữ người dùng nhập
+
+  const c = core.calcItem({ ...item, manual: state.manual[key] || null });
   card.querySelector('[data-f="full"]').classList.toggle('miss', !(full > 0));
   card.querySelector('[data-f="per"]').classList.toggle('miss', !(per > 0));
   card.querySelector('[data-f="layers"]').classList.toggle('miss', !(layers > 0));
-  card.querySelector('.lots').outerHTML = `<div class="lots"><div class="h"><span></span><span>HSD</span><span>Bốc ra</span><span>Lôi ra</span></div>${
-    c.lots.map(l => { const tk = 'p|' + key + '|' + l.code;
-      return `<div class="l${state.ticks[tk] ? ' done' : ''}" data-tick="${esc(tk)}"><span class="ck">✓</span>
-        <span class="code">${esc(l.code || '—')}${item.lots.length > 1 ? ` <small>*${l.qty}</small>` : ''}</span>
-        <span class="res">${esc(l.out)}</span><span class="pull">${l.pull ?? '—'}</span></div>`; }).join('')}</div>`;
-  updateTotals();
-}
-
-function updateTotals() {
-  const el = $('#sum'); if (!el) return;
-  const items = pchomeItems(); let full = 0, loose = 0, pull = 0, need = 0;
-  for (const it of items) { const c = core.calcItem(it); full += c.nFull; loose += c.nLoose; pull += c.nPull; if (!c.complete) need++; }
-  const rows = state.data.main.filter(r => core.isPchome(r.khach));
-  el.textContent = `${core.PCHOME} · ${new Set(rows.map(r => r.don)).size} đơn · ${[...new Set(rows.map(r => r.xe))].join(', ')}`
-    + ` — bốc ra ${full} bản + ${loose} lẻ · lôi ra ${pull} bản nguyên` + (need ? ` · còn ${need} mặt hàng chưa đủ thông số` : '');
+  card.querySelector('.cap').textContent = c.cap ? '=' + c.cap + '/bản' : 'chưa cài';
+  card.querySelector('.n small').textContent = item.codes.join(',') + (c.complete ? ` · ${c.full} · ${c.per}×${c.layers}` : '');
+  state.open.add(key);   // vừa sửa xong thì giữ ô nhập mở, tránh bị đóng giữa chừng khi đủ thông số
+  c.lots.forEach((l, i) => {
+    card.querySelector(`.rs[data-i="${i}"]`).textContent = l.out;
+    card.querySelector(`.pl[data-i="${i}"]`).textContent = l.pull ?? '—';
+  });
+  $('#pk').innerHTML = pcKpi(pchomeTotals(pchomeItems()));
 }
 
 // ── Cài đặt ──
 function renderSettings() {
-  const item = (title, info, ok) => `<div class="li"><div><b>${title}</b><span class="${ok ? 'ok' : 'no'}">${info}</span></div></div>`;
+  const line = (title, info, ok) => `<div class="li"><div><b>${title}</b><span class="${ok ? 'ok' : 'no'}">${info}</span></div></div>`;
   const d = state.data, v = state.vitri, o = state.doiBan;
-  const when = d ? new Date(d.loadedAt).toLocaleString('vi-VN') : '';
+  const src = x => (x.source === 'import' ? 'nạp tay' : 'có sẵn trong app');
   return `<div class="panel">
-    ${item('Dữ liệu hôm nay', d ? `${esc(d.filename)} · ${d.main.length} dòng · nạp lúc ${when}` : 'chưa nạp', !!d)}
-    ${item('Vị trí kho (vi_tri_kho_config)', v ? `${esc(v.filename)} · ${Object.keys(v.byMa).length} mã hàng · ${v.source === 'import' ? 'nạp tay' : 'có sẵn trong app'}` : 'chưa có', !!v)}
-    ${item('Danh sách đổi bản (doi_ban_config)', o ? `${esc(o.filename)} · ${Object.keys(o.dict).length} khách · ${o.source === 'import' ? 'nạp tay' : 'có sẵn trong app'}` : 'chưa có', !!o)}
-    ${(v?.source === 'import' || o?.source === 'import') ? `<div class="li"><div><b>Dùng lại cấu hình có sẵn</b><span>bỏ file đã nạp tay</span></div><button class="btn small" id="useBundled">Dùng</button></div>` : ''}
+    ${line('Dữ liệu hôm nay', d ? `${esc(d.filename)} · ${d.main.length} dòng · nạp lúc ${new Date(d.loadedAt).toLocaleString('vi-VN')}` : 'chưa nạp', !!d)}
+    ${line('Vị trí kho', v ? `${esc(v.filename)} · ${Object.keys(v.byMa).length} mã hàng · ${src(v)}` : 'chưa có', !!v)}
+    ${line('Danh sách đổi bản', o ? `${esc(o.filename)} · ${Object.keys(o.dict).length} khách · ${src(o)}` : 'chưa có', !!o)}
+    ${(v?.source === 'import' || o?.source === 'import') ? `<div class="li"><div><b>Dùng lại cấu hình có sẵn</b><span>bỏ file đã nạp tay</span></div><button class="btn" id="useBundled">Dùng</button></div>` : ''}
   </div>
   <div class="panel">
-    <div class="li"><div><b>Dấu ✓ đã xong</b><span>${Object.keys(state.ticks).length} dòng</span></div><button class="btn small" id="clearTicks">Xoá</button></div>
-    <div class="li"><div><b>Cách xếp nhập tay (PCHome)</b><span>${Object.keys(state.manual).length} mặt hàng</span></div><button class="btn small danger" id="clearManual">Xoá</button></div>
-    <div class="li"><div><b>Xoá toàn bộ dữ liệu trên máy</b><span>dữ liệu, cấu hình, dấu ✓, nhập tay</span></div><button class="btn small danger" id="clearAll">Xoá hết</button></div>
+    <div class="li"><div><b>Dấu ✓ đã xong</b><span>${Object.keys(state.ticks).length} dòng</span></div><button class="btn" id="clearTicks">Xoá</button></div>
+    <div class="li"><div><b>Cách xếp nhập tay (PCHome)</b><span>${Object.keys(state.manual).length} mặt hàng</span></div><button class="btn warn" id="clearManual">Xoá</button></div>
+    <div class="li"><div><b>Xoá toàn bộ dữ liệu trên máy</b><span>dữ liệu, cấu hình, dấu ✓, nhập tay</span></div><button class="btn warn" id="clearAll">Xoá hết</button></div>
   </div>
-  <div class="note"><b>Cách dùng:</b> bấm <b>Nạp file</b>, chọn file dữ liệu ngày (全虹…xlsx). Hai file cấu hình chỉ cần nạp một lần,
-    khi nào sửa thì nạp lại. Nạp một lần là xong, mở lại app không cần mạng.<br>
-    <b>Cài lên màn hình chính:</b> Safari → nút Chia sẻ → Thêm vào Màn hình chính.</div>`;
+  <div class="note"><b>Cách dùng:</b> bấm <b>Nạp file</b>, chọn file dữ liệu ngày (全虹…xlsx). Cấu hình vị trí kho và đổi bản đã có sẵn trong app.
+    Nạp một lần là xong, mở lại không cần mạng.<br><b>Cài lên màn hình chính:</b> Safari → Chia sẻ → Thêm vào Màn hình chính.</div>`;
 }
 
 // ── Sự kiện ──
@@ -301,6 +276,12 @@ document.addEventListener('click', e => {
   const chip = e.target.closest('.chip[data-xe]');
   if (chip) { state.hsdXe = chip.dataset.xe; render(); window.scrollTo(0, 0); return; }
   if (e.target.id === 'hsdBack') { state.hsdXe = ''; state.q = ''; render(); window.scrollTo(0, 0); return; }
+  const opener = e.target.closest('[data-open]');
+  if (opener) {
+    const k = opener.dataset.open;
+    if (state.open.has(k)) state.open.delete(k); else state.open.add(k);
+    const y = window.scrollY; render(); window.scrollTo(0, y); return;
+  }
   const seg = e.target.closest('.seg button[data-f]');
   if (seg) { state.filter = seg.dataset.f; render(); return; }
   const tick = e.target.closest('[data-tick]');
@@ -308,8 +289,8 @@ document.addEventListener('click', e => {
     const k = tick.dataset.tick;
     if (state.ticks[k]) delete state.ticks[k]; else state.ticks[k] = 1;
     store.set('ticks', state.ticks);
-    if (state.tab === 'swap' || state.tab === 'hsd') { const y = window.scrollY; render(); window.scrollTo(0, y); }
-    else { tick.classList.toggle('done', !!state.ticks[k]); }
+    if (state.tab === 'pchome') document.querySelectorAll('[data-tick]').forEach(el => { if (el.dataset.tick === k) el.classList.toggle('done', !!state.ticks[k]); });
+    else { const y = window.scrollY; render(); window.scrollTo(0, y); }
     return;
   }
   if (e.target.id === 'useBundled') {
@@ -321,9 +302,10 @@ document.addEventListener('click', e => {
   if (e.target.id === 'clearTicks') { state.ticks = {}; store.set('ticks', {}); render(); }
   if (e.target.id === 'clearManual') { state.manual = {}; store.set('manual', {}); render(); }
   if (e.target.id === 'clearAll') {
-    if (!e.target.dataset.sure) { e.target.dataset.sure = 1; e.target.textContent = 'Bấm lần nữa để xoá'; return; }
+    if (!e.target.dataset.sure) { e.target.dataset.sure = 1; e.target.textContent = 'Bấm lần nữa'; return; }
     ['data', 'vitri', 'doiban', 'manual', 'ticks'].forEach(store.del);
-    Object.assign(state, { data: null, vitri: null, doiBan: null, manual: {}, ticks: {} }); render();
+    Object.assign(state, { data: null, vitri: null, doiBan: null, manual: {}, ticks: {} });
+    loadBundledConfig().then(() => render()); render();
   }
 });
 document.addEventListener('input', e => {
