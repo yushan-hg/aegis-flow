@@ -58,15 +58,32 @@ export function importBuffer(buf, name) {
   }
   if (kind === 'vitri') {
     const v = core.parseVitri(core.sheetRows(XLSX, wb.Sheets[wb.SheetNames[0]]));
-    state.vitri = { filename: name, ...v }; store.set('vitri', state.vitri);
+    state.vitri = { filename: name, ...v, source: 'import' }; store.set('vitri', state.vitri);
     return `Vị trí kho: ${Object.keys(v.byMa).length} mã hàng`;
   }
   if (kind === 'doiban') {
     const dict = core.parseDoiBan(core.sheetRows(XLSX, wb.Sheets[wb.SheetNames[0]]));
-    state.doiBan = { filename: name, dict }; store.set('doiban', state.doiBan);
+    state.doiBan = { filename: name, dict, source: 'import' }; store.set('doiban', state.doiBan);
     return `Danh sách đổi bản: ${Object.keys(dict).length} khách`;
   }
   throw new Error('không nhận ra loại file (cần file dữ liệu ngày, vi_tri_kho_config hoặc doi_ban_config)');
+}
+
+// ── Cấu hình có sẵn trong app (config.json): dùng làm mặc định; file nạp tay thì ghi đè, đến khi bấm "Dùng bản có sẵn" ──
+async function loadBundledConfig() {
+  try {
+    const r = await fetch('config.json', { cache: 'no-cache' });
+    if (!r.ok) return false;
+    const b = await r.json();
+    let changed = false;
+    if (b.vitri && state.vitri?.source !== 'import') {
+      state.vitri = { ...b.vitri, source: 'bundled' }; store.set('vitri', state.vitri); changed = true;
+    }
+    if (b.doiBan && state.doiBan?.source !== 'import') {
+      state.doiBan = { ...b.doiBan, source: 'bundled' }; store.set('doiban', state.doiBan); changed = true;
+    }
+    return changed;
+  } catch { return false; }
 }
 
 // ── Màn hình ──
@@ -263,8 +280,9 @@ function renderSettings() {
   const when = d ? new Date(d.loadedAt).toLocaleString('vi-VN') : '';
   return `<div class="panel">
     ${item('Dữ liệu hôm nay', d ? `${esc(d.filename)} · ${d.main.length} dòng · nạp lúc ${when}` : 'chưa nạp', !!d)}
-    ${item('Vị trí kho (vi_tri_kho_config)', v ? `${esc(v.filename)} · ${Object.keys(v.byMa).length} mã hàng` : 'chưa nạp', !!v)}
-    ${item('Danh sách đổi bản (doi_ban_config)', o ? `${esc(o.filename)} · ${Object.keys(o.dict).length} khách` : 'chưa nạp', !!o)}
+    ${item('Vị trí kho (vi_tri_kho_config)', v ? `${esc(v.filename)} · ${Object.keys(v.byMa).length} mã hàng · ${v.source === 'import' ? 'nạp tay' : 'có sẵn trong app'}` : 'chưa có', !!v)}
+    ${item('Danh sách đổi bản (doi_ban_config)', o ? `${esc(o.filename)} · ${Object.keys(o.dict).length} khách · ${o.source === 'import' ? 'nạp tay' : 'có sẵn trong app'}` : 'chưa có', !!o)}
+    ${(v?.source === 'import' || o?.source === 'import') ? `<div class="li"><div><b>Dùng lại cấu hình có sẵn</b><span>bỏ file đã nạp tay</span></div><button class="btn small" id="useBundled">Dùng</button></div>` : ''}
   </div>
   <div class="panel">
     <div class="li"><div><b>Dấu ✓ đã xong</b><span>${Object.keys(state.ticks).length} dòng</span></div><button class="btn small" id="clearTicks">Xoá</button></div>
@@ -294,6 +312,12 @@ document.addEventListener('click', e => {
     else { tick.classList.toggle('done', !!state.ticks[k]); }
     return;
   }
+  if (e.target.id === 'useBundled') {
+    if (state.vitri?.source === 'import') { state.vitri = null; store.del('vitri'); }
+    if (state.doiBan?.source === 'import') { state.doiBan = null; store.del('doiban'); }
+    loadBundledConfig().then(() => { render(); toast('Đã dùng lại cấu hình có sẵn trong app.'); });
+    return;
+  }
   if (e.target.id === 'clearTicks') { state.ticks = {}; store.set('ticks', {}); render(); }
   if (e.target.id === 'clearManual') { state.manual = {}; store.set('manual', {}); render(); }
   if (e.target.id === 'clearAll') {
@@ -315,5 +339,6 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localho
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-window.AF = { importBuffer, render, state, core };   // dùng cho kiểm thử
+window.AF = { importBuffer, render, state, core, loadBundledConfig };   // dùng cho kiểm thử
 render();
+loadBundledConfig().then(changed => { if (changed) render(); });

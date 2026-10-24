@@ -1,26 +1,25 @@
-# Aegis Flow trên iPhone — hướng dẫn đưa lên và dùng
+# Aegis Flow trên iPhone
 
-## 1. Đưa lên mạng (làm một lần, mất khoảng 5 phút)
-iPhone chỉ cho chạy ngoại tuyến khi trang có HTTPS, nên cần đặt thư mục `site` ở một nơi có địa chỉ riêng. Cách dễ nhất là **Netlify** (miễn phí):
+## 1. Đưa lên mạng bằng GitHub Pages (làm một lần)
+1. Mở **GitHub Desktop**, đăng nhập. **File → Add local repository…** chọn thư mục `Mobile` này.
+2. Bấm **Publish repository**, đặt tên `aegis-flow`, **bỏ dấu tích "Keep this code private"** (Pages miễn phí chỉ chạy với kho công khai).
+3. Trên github.com vào kho → **Settings → Pages** → Deploy from a branch → nhánh `main`, thư mục `/docs` → Save.
+4. Sau 1–2 phút app có địa chỉ `https://TEN-GITHUB.github.io/aegis-flow/`.
 
-1. Vào https://app.netlify.com/drop và đăng ký tài khoản (có thể dùng email hoặc Google).
-2. Kéo cả thư mục **`Mobile\site`** thả vào khung trên trang.
-3. Netlify cho một địa chỉ dạng `https://tên-ngẫu-nhiên.netlify.app`. Có thể đổi tên trong Site settings → Change site name.
-
-Trong thư mục `site` chỉ có file của app — **không có dữ liệu hay file cấu hình của bạn**, nên để công khai cũng không lộ gì.
+> Kho công khai: ai biết địa chỉ đều mở được app và xem được danh sách hàng, vị trí kho, danh sách khách trong `docs/config.json`. Dữ liệu giao hàng hằng ngày thì không lên mạng.
 
 ## 2. Cài lên iPhone
-1. Mở địa chỉ trên bằng **Safari** (bắt buộc Safari, không phải Chrome).
-2. Bấm nút **Chia sẻ** → **Thêm vào Màn hình chính**.
-3. Mở app từ icon vừa tạo. Lần mở đầu phải có mạng để máy tải sẵn app.
+Mở địa chỉ bằng **Safari** → Chia sẻ → **Thêm vào Màn hình chính**. Lần mở đầu phải có mạng.
 
 ## 3. Dùng hằng ngày
-1. Chuyển file Excel dữ liệu ngày (全虹…xlsx) sang iPhone (Zalo, AirDrop hoặc iCloud), lưu vào ứng dụng **Files**.
-2. Mở app → **Nạp file** → chọn file. Chọn được nhiều file một lần.
-3. Hai file cấu hình `vi_tri_kho_config.xlsx` và `doi_ban_config.xlsx` chỉ cần nạp lần đầu và khi bạn sửa chúng.
+1. Chuyển file Excel dữ liệu ngày (全虹…xlsx) sang iPhone (Zalo, AirDrop, iCloud), lưu vào **Files**.
+2. Mở app → **Nạp file** → chọn file. **Không cần nạp file cấu hình**: `vi_tri_kho_config` và `doi_ban_config` đã có sẵn trong app.
+3. Muốn dùng file cấu hình khác tạm thời thì cứ nạp tay, app sẽ ưu tiên file đó. Vào **Cài đặt → Dùng lại cấu hình có sẵn** để quay về.
 
-## 4. Thử ngoại tuyến
-Sau khi cài xong, bật **chế độ máy bay** rồi mở app từ icon. Nếu mở được và vẫn thấy dữ liệu đã nạp thì phần ngoại tuyến đã chạy. Nếu không mở được thì báo lại để sửa.
+## 4. Khi sửa file cấu hình hoặc app
+1. Sửa `vi_tri_kho_config.xlsx` / `doi_ban_config.xlsx` trong thư mục `Config` của app Windows như bình thường.
+2. Chạy `tools\build_site.ps1` (tôi sẽ chạy giúp) — nó đọc lại hai file đó vào `docs/config.json`.
+3. Trong GitHub Desktop: **Commit to main**, rồi **Push origin**. Điện thoại có mạng thì tự lấy cấu hình mới.
 
-## 5. Khi app được cập nhật
-Chạy lại `tools\build_site.ps1` rồi kéo thả thư mục `site` mới vào Netlify (Deploys → kéo vào ô deploy). Lần mở app kế tiếp có mạng, điện thoại tự tải bản mới.
+## 5. Thử ngoại tuyến
+Sau khi cài xong, bật **chế độ máy bay** rồi mở app từ icon. Mở được và vẫn thấy dữ liệu đã nạp là ổn.

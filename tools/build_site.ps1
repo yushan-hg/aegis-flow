@@ -9,5 +9,7 @@ foreach ($f in 'index.html','style.css','app.js','core.js','sw.js','manifest.web
   Copy-Item (Join-Path $root $f) $site
 }
 Copy-Item (Join-Path $root 'vendor\xlsx.full.min.js') (Join-Path $site 'vendor')
+# Cấu hình có sẵn trong app (đọc từ thư mục Config của app Windows)
+node (Join-Path $root 'tools\build_config.mjs')
 Get-ChildItem $site -Recurse -File | Select-Object @{n='File';e={$_.FullName.Substring($site.Length+1)}}, Length | Format-Table -AutoSize
 
