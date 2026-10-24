@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Aegis">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+<title>Aegis Flow</title>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <b>AEGIS FLOW</b>
+    <span id="fileName" class="muted">Chưa nạp file</span>
+  </div>
+  <label class="btn primary" for="fileInput">Nạp file</label>
+  <input id="fileInput" type="file" multiple hidden
+         accept=".xlsx,.xlsm,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+</header>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<main id="view"></main>
+
+<nav class="tabs" aria-label="Chuyển tab">
+  <button data-tab="swap" class="on">Đổi bản</button>
+  <button data-tab="pchome">PCHome</button>
+  <button data-tab="hsd">In HSD</button>
+  <button data-tab="settings">Cài đặt</button>
+</nav>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
