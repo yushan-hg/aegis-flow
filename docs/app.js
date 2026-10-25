@@ -119,8 +119,8 @@ function renderSwap() {
     for (const r of list) {
       const hsd = r.hsd ? `<div class="hs">${esc(r.hsd.split(/[\/+]/).join('  '))}</div>` : '';
       h += `<div class="r${state.ticks[swapKey(r)] ? ' done' : ''}" data-tick="${esc(swapKey(r))}"><span class="ck">✓</span>
-        <div class="m"><div class="t"><b>${esc(r.ten)}</b><span class="tag">${esc(r.swap)}</span></div>
-          <div class="s">${esc(r.khach)} · ${esc(r.don)} · ${esc(r.ma)} · ${r.pallet}板</div>${hsd}</div>
+        <div class="m"><div class="t"><b>${esc(r.ten)}</b><span class="tag">${esc(r.swap)}</span></div>${hsd}
+          <div class="s">${esc(r.khach)} · ${esc(r.don)} · ${esc(r.ma)} · ${r.pallet}板</div></div>
         <div class="q">${r.qty}</div></div>`;
     }
     h += '</section>';
@@ -158,9 +158,9 @@ function renderHsd() {
     for (const r of d.rows) {
       const k = hsdKey(x.xe, r);
       h += `<div class="r${state.ticks[k] ? ' done' : ''}" data-tick="${esc(k)}"><span class="ck">✓</span>
-        <div class="m"><div class="t"><b>${esc(r.ten)}</b><span class="s mono" style="flex:none">${esc(r.loc)}</span></div>
+        <div class="m"><div class="t"><b>${esc(r.ten)}</b></div>
           <div class="hs">${esc(r.hsd.split(/[\/+]/).join('  ') || '—')}</div>
-          <div class="s">${esc(r.ma)}${r.desc ? ' · ' + esc(r.desc) : ''}</div></div>
+          <div class="s">${esc(r.loc)} · ${esc(r.ma)}${r.desc ? ' · ' + esc(r.desc) : ''}</div></div>
         <div class="q">${r.qty}</div></div>`;
     }
     h += '</section>';
