@@ -69,12 +69,12 @@ h2 em{font-style:normal;text-transform:none;letter-spacing:0;font-weight:600;col
 /* bảng phẳng: dòng nào cũng đủ cột, tiêu đề dính trên đầu khi cuộn */
 .tw{background:var(--s1);border:1px solid var(--line);border-radius:10px;overflow:clip;margin-bottom:8px}
 table{width:100%;border-collapse:collapse;font-size:11.5px}
-th{position:sticky;top:0;z-index:1;background:var(--s3);color:var(--mute);font-size:10.5px;font-weight:700;text-align:left;padding:6px 4px;white-space:nowrap;box-shadow:inset 0 -1px 0 var(--line)}
-td{padding:5px 4px;border-top:1px solid var(--line);vertical-align:top;overflow-wrap:break-word;line-height:1.3}
+th{position:sticky;top:0;z-index:1;background:var(--s3);color:var(--mute);font-size:10.5px;font-weight:700;text-align:center;padding:6px 4px;white-space:nowrap;box-shadow:inset 0 -1px 0 var(--line)}
+td{padding:5px 4px;border-top:1px solid var(--line);text-align:center;vertical-align:middle;overflow-wrap:break-word;line-height:1.3}
 th:first-child,td:first-child{padding-left:8px} th:last-child,td:last-child{padding-right:8px}
 tbody tr:nth-child(even) td{background:var(--s2)}
 td.m,th.m{font-family:var(--mono);white-space:nowrap}
-td.n,th.n{text-align:right;white-space:nowrap;font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.n,th.n{white-space:nowrap;font-family:var(--mono);font-variant-numeric:tabular-nums}
 td.s{font-size:10.5px;color:var(--mute);overflow-wrap:anywhere}
 td.b{font-weight:800} td.n.b{font-size:13px} td.a{color:var(--acc)}
 

@@ -161,7 +161,7 @@ function vHome() {
     <label class="btn pri" for="fileInput">⤒ ${esc(S.data ? T('reload') : T('load'))}</label></section>`;
   const settings = heading(T('lang')) + seg('lg', LANGS, S.lang)
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
-    + `<div class="cap">Aegis Flow Mobile · v10 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v11 · ${esc(T('offline'))}</div>`;
   tail = settings;
   if (!D) return file + empty(T('need_data'), T('need_data2'));
 
