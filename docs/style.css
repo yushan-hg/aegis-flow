@@ -101,3 +101,5 @@ td.k{cursor:pointer}
 td.k i{display:grid;place-items:center;width:20px;height:20px;margin:0 auto;border-radius:6px;border:1.5px solid var(--dim);font:normal 12px/1 var(--sans);color:transparent}
 tr.done td{opacity:.42} tr.done td.k{opacity:1} tr.done td.k i{background:var(--ok);border-color:var(--ok);color:var(--onacc)}
 tr.done td.g{opacity:1}
+
+.kpis.big{margin-top:10px} .kpis.big b{font-size:28px} .kpis.big small{font:700 10.5px var(--sans);text-transform:uppercase;letter-spacing:.4px} .kpis .a b{color:var(--acc)}

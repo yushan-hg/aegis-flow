@@ -39,7 +39,10 @@ function derive() {
   const noHsd = core.excludeHsd(main, hsd);
   const rowsByXe = new Map();
   for (const r of noHsd) (rowsByXe.get(r.xe) ?? rowsByXe.set(r.xe, []).get(r.xe)).push(r);
-  D = { main, hsd, noHsd, xeAll: [...new Set(main.map(r => r.xe))], xeList: [...rowsByXe.keys()].sort(), items: core.buildItems(noHsd) };
+  const stats = core.buildStats(noHsd);
+  D = { main, hsd, noHsd, xeAll: [...new Set(main.map(r => r.xe))], xeList: [...rowsByXe.keys()].sort(), items: core.buildItems(noHsd),
+        total: noHsd.reduce((s, r) => s + r.qty, 0),            // số lượng tổng (đã trừ hàng HSD)
+        pick: stats.reduce((s, v) => s + v.nhatLe, 0) };        // tải lẻ = nhặt lẻ = tổng trừ phần đổi bản (板位數 ≥ 0.65)
 }
 const vitriOr = () => S.vitri || { byMa: {}, byTen: {} };
 const swapRows = () => (D && S.doiBan ? core.buildSwap(D.main, D.hsd, S.doiBan.dict) : []);
@@ -192,7 +195,8 @@ function vHome() {
     return tbl([col('c_khach', 's', r => esc(r.khach), true), col('c_xe', 'm', r => esc(r.xe), true), col('c_ten', 'b', r => esc(r.ten)), col('c_qty', 'n b', r => nf(r.qty)),
                 col('c_swap', 'b a', r => esc(r.swap)), col('c_hsd', 'm', r => hsdText(r.hsd))], rows);
   };
-  return file + heading(T('gas')) + gas + heading(T('no_deliver'), miss.length ? T('xe_n', miss.length) : '') + missBox
+  const totals = `<div class="kpis big"><div><b>${nf(D.total)}</b><small>${esc(T('k_total'))}</small></div><div class="a"><b>${nf(D.pick)}</b><small>${esc(T('k_pick'))}</small></div></div>`;
+  return file + totals + heading(T('gas')) + gas + heading(T('no_deliver'), miss.length ? T('xe_n', miss.length) : '') + missBox
     + heading(T('swap'), rows.length ? `${rows.length} ${T('lines')}` : '');
 }
 
@@ -278,7 +282,7 @@ function vMore() {
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
     + heading(T('clear_all'))
     + `<button class="btn wide warn" data-a="clearAll">${esc(sureClear ? T('sure') : T('clear_all_btn'))}</button><div class="note">${esc(T('clear_all_sub'))}</div>`
-    + `<div class="cap">Aegis Flow Mobile · v14 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v15 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Sự kiện ─────────────────────────────────────────────────────────────────
