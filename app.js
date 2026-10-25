@@ -24,6 +24,10 @@ const S = {
   q: '', swapFilter: 'all', hsdXe: '', ordXe: '', dataXe: '', pick: null,
   disp: null, sheet: null,
 };
+// Bản cũ lưu tên tab khác (swap, pchome, hsd, settings): giá trị lạ thì về tab đầu, nếu không màn hình sẽ trống
+if (!['home', 'disp', 'work', 'find', 'more'].includes(S.tab)) S.tab = 'home';
+if (!['hsd', 'swap', 'pc', 'ord'].includes(S.seg)) S.seg = 'hsd';
+if (!['vi', 'zh', 'en'].includes(S.lang)) S.lang = 'vi';
 let T = makeT(S.lang);
 let D = null;          // dữ liệu suy ra từ file ngày
 let bodyFn = () => '';
@@ -406,7 +410,7 @@ function vMore() {
     </div>
     <h2>${esc(T('lang'))}</h2><div class="card" style="padding:8px">${seg('lg', LANGS.map(([k, l]) => [k, l]), S.lang)}<div style="height:2px"></div></div>
     <h2>${esc(T('theme'))}</h2><div class="card list">${li('◐', T('theme'), esc(themeName), 'data-a="theme"')}</div>
-    <div class="cap">Aegis Flow Mobile · ${esc(T('offline'))}</div>`;
+    <div class="cap">Aegis Flow Mobile · v7 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Bảng trượt từ dưới lên ──────────────────────────────────────────────────
@@ -517,6 +521,10 @@ $('#fileInput').addEventListener('change', e => { const f = [...e.target.files];
 
 // ── Ngoại tuyến ──
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+  // Có bản mới: tải lại trang một lần để không bị lẫn trang cũ với file mới (lần cài đầu tiên thì không cần)
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 

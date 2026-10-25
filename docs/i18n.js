@@ -22,7 +22,7 @@ const D = {
     rebal_none: 'Không ai quá tải (trên 115%) — không cần dời xe nào.', rebal_done: (n, w) => `Đã dời ${n} xe · lệch lớn nhất ${w}`, rebal_stuck: 'Có người quá tải nhưng không còn cách dời nào mà không làm người khác quá tải.',
     auto_all: 'Chia lại từ đầu', balanced: 'cân bằng',
     detail: 'Chi tiết', give: 'Giao cho', by_order: 'Theo đơn', flat: 'Bảng phẳng', orders_n: (d, l) => `${d} đơn · ${l} dòng`, lines: 'dòng',
-    col_nguyen: '原本數量', col_flip: '翻板數量', col_pick: '揀貨數量',
+    col_nguyen: 'Nguyên', col_flip: 'Đổi bản', col_pick: 'Nhặt lẻ',
     seg_hsd: 'HSD', seg_lines: 'Dòng hàng', seg_item: 'Tìm hàng', seg_veh: 'Theo xe', all: 'Tất cả', todo: 'Chưa xong', need: 'Cần nhập',
     ph_search: 'Tìm xe, khách, đơn, mã, tên hàng…', ph_item: 'Tên hàng, vd CK6N', ph_xe: 'Số xe, vd 9911', more_rows: n => `Còn ${n} dòng nữa — gõ thêm để lọc.`,
     item_note: 'Tổng số lượng của từng mặt hàng, chia theo xe.', pc_note: 'Cột phải: Bốc ra (bản/lẻ) · Lôi ra (bản nguyên).',
