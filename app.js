@@ -20,14 +20,13 @@ const S = {
   q: '', hsdXe: '', dataXe: '',
 };
 // Bản cũ lưu tên tab khác (disp, more, swap, …): giá trị lạ thì về tab đầu, nếu không màn hình sẽ trống
-if (!['home', 'work', 'find'].includes(S.tab)) S.tab = 'home';
+if (!['home', 'work', 'find', 'more'].includes(S.tab)) S.tab = 'home';
 if (!['hsd', 'pc'].includes(S.seg)) S.seg = 'hsd';
 if (!['vi', 'zh', 'en'].includes(S.lang)) S.lang = 'vi';
 if (!['', 'dark', 'light'].includes(S.theme)) S.theme = '';
 let T = makeT(S.lang);
 let D = null;          // dữ liệu suy ra từ file ngày
 let bodyFn = () => '';
-let tail = '';          // phần dưới danh sách (Trang chủ: ngôn ngữ, giao diện)
 
 // ── Dữ liệu suy ra ──────────────────────────────────────────────────────────
 const GAS = ['CO2F7', 'CO2F5', 'N2F13'];   // bình khí: cùng danh sách với app Windows
@@ -148,21 +147,17 @@ function render() {
   });
   $('#title').textContent = T('t_' + S.tab);
   const sc = $('#screen'), y = sc.scrollTop;
-  bodyFn = () => ''; tail = '';
-  const head = { home: vHome, work: vWork, find: vFind }[S.tab]();
-  sc.innerHTML = head + '<div id="res">' + bodyFn() + '</div>' + tail;
+  bodyFn = () => '';
+  const head = { home: vHome, work: vWork, find: vFind, more: vMore }[S.tab]();
+  sc.innerHTML = head + '<div id="res">' + bodyFn() + '</div>';
   sc.scrollTop = y;
 }
-function go(tab) { S.tab = tab; S.q = ''; store.set('tab', tab); render(); $('#screen').scrollTop = 0; }
+function go(tab) { sureClear = false; S.tab = tab; S.q = ''; store.set('tab', tab); render(); $('#screen').scrollTop = 0; }
 
 // ── Tab Trang chủ: nạp file · bình khí · xe không giao hàng · đổi bản ──────
 function vHome() {
   const file = `<section class="file"><div class="fi"><b>${esc(S.data ? S.data.filename : T('noFile'))}</b>${S.data ? `<small>${esc(T('file_lines', S.data.main.length, S.data.hsd.length))}</small>` : ''}</div>
     <label class="btn pri" for="fileInput">⤒ ${esc(S.data ? T('reload') : T('load'))}</label></section>`;
-  const settings = heading(T('lang')) + seg('lg', LANGS, S.lang)
-    + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
-    + `<div class="cap">Aegis Flow Mobile · v11 · ${esc(T('offline'))}</div>`;
-  tail = settings;
   if (!D) return file + empty(T('need_data'), T('need_data2'));
 
   const gas = `<div class="kpis">${GAS.map(ma => { const q = gasQty(ma); return `<div class="${q ? '' : 'z'}"><b>${nf(q)}</b><small>${esc(ma)}</small></div>`; }).join('')}</div>`;
@@ -242,6 +237,27 @@ function vFind() {
   return head;
 }
 
+// ── Tab Thêm: những việc ngoài luồng (dữ liệu & cấu hình, ngôn ngữ, giao diện, xoá dữ liệu) ──
+let sureClear = false;   // xoá dữ liệu phải bấm hai lần
+function vMore() {
+  const src = x => (x.source === 'import' ? T('src_import') : T('src_bundled'));
+  const li = (t, d, st = '', no = false) => `<div class="li"><span><div class="t">${esc(t)}</div><div class="d">${esc(d)}</div></span>${st ? `<span class="st${no ? ' no' : ''}">${esc(st)}</span>` : ''}</div>`;
+  const d = S.data, v = S.vitri, o = S.doiBan;
+  const imported = v?.source === 'import' || o?.source === 'import';
+  return heading(T('data_cfg'))
+    + '<div class="card">'
+    + li(T('data_today'), d ? `${d.filename} · ${T('lines_n', d.main.length)}` : T('not_yet'), '', !d)
+    + li(T('vitri'), v ? `${v.filename} · ${Object.keys(v.byMa).length}` : T('not_yet'), v ? src(v) : '')
+    + li(T('doiban'), o ? `${o.filename} · ${Object.keys(o.dict).length}` : T('not_yet'), o ? src(o) : '')
+    + '</div>'
+    + (imported ? `<button class="btn wide" data-a="bundled">${esc(T('use_bundled'))}</button><div class="note">${esc(T('use_bundled_sub'))}</div>` : '')
+    + heading(T('lang')) + seg('lg', LANGS, S.lang)
+    + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
+    + heading(T('clear_all'))
+    + `<button class="btn wide warn" data-a="clearAll">${esc(sureClear ? T('sure') : T('clear_all_btn'))}</button><div class="note">${esc(T('clear_all_sub'))}</div>`
+    + `<div class="cap">Aegis Flow Mobile · v12 · ${esc(T('offline'))}</div>`;
+}
+
 // ── Sự kiện ─────────────────────────────────────────────────────────────────
 function applyTheme() {
   if (S.theme) document.documentElement.dataset.theme = S.theme; else delete document.documentElement.dataset.theme;
@@ -257,6 +273,20 @@ document.addEventListener('click', e => {
   if ((x = c('[data-hx]'))) { S.hsdXe = x.dataset.hx; return render(); }
   if ((x = c('[data-dx]'))) { S.dataXe = x.dataset.dx; return render(); }
   if ((x = c('[data-lg]'))) { S.lang = x.dataset.lg; store.set('lang', S.lang); T = makeT(S.lang); return render(); }
+  if ((x = c('[data-a]'))) {
+    if (x.dataset.a === 'bundled') {
+      if (S.vitri?.source === 'import') { S.vitri = null; store.del('vitri'); }
+      if (S.doiBan?.source === 'import') { S.doiBan = null; store.del('doiban'); }
+      loadBundledConfig().then(() => { render(); toast(T('bundled_used')); });
+      return;
+    }
+    if (!sureClear) { sureClear = true; return render(); }
+    sureClear = false;
+    ['data', 'vitri', 'doiban', 'listxe'].forEach(store.del);
+    Object.assign(S, { data: null, vitri: null, doiBan: null, listXe: [], hsdXe: '', dataXe: '', q: '' });
+    derive(); render(); loadBundledConfig().then(() => render());
+    return toast(T('cleared'));
+  }
   if ((x = c('[data-th]'))) { S.theme = x.dataset.th; store.set('theme', S.theme); applyTheme(); return render(); }
 });
 
