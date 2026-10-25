@@ -43,7 +43,12 @@ function derive() {
 }
 const vitriOr = () => S.vitri || { byMa: {}, byTen: {} };
 const swapRows = () => (D && S.doiBan ? core.buildSwap(D.main, D.hsd, S.doiBan.dict) : []);
-const hsdList = () => (D ? core.buildHsd(D.hsd, vitriOr()) : []);
+// HSD và PCHome tách riêng: dòng HSD của khách Pchome十五庫 chỉ hiện ở PCHome, không hiện ở HSD
+const hsdList = () => {
+  if (!D) return [];
+  const pc = new Set(D.main.filter(r => core.isPchome(r.khach)).map(r => [r.xe, r.don, r.ma].join('\u0001')));
+  return core.buildHsd(D.hsd.filter(h => !core.isPchome(h.khach) && !pc.has([h.xe, h.don, h.ma].join('\u0001'))), vitriOr());
+};
 const pcItems = () => (D ? core.buildPchome(D.main, D.hsd, vitriOr(), {}) : []);
 const gasQty = ma => D.main.filter(r => !core.isPchome(r.khach) && String(r.ten).toUpperCase() === ma).reduce((s, r) => s + r.qty, 0);
 const missingXe = () => {
@@ -156,7 +161,7 @@ function vHome() {
     <label class="btn pri" for="fileInput">⤒ ${esc(S.data ? T('reload') : T('load'))}</label></section>`;
   const settings = heading(T('lang')) + seg('lg', LANGS, S.lang)
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
-    + `<div class="cap">Aegis Flow Mobile · v9 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v10 · ${esc(T('offline'))}</div>`;
   tail = settings;
   if (!D) return file + empty(T('need_data'), T('need_data2'));
 
