@@ -138,7 +138,7 @@ const seg = (attr, list, cur) => `<div class="seg">${list.map(([k, l, n]) => `<b
 const chips = (attr, list, cur) => `<div class="chips">${list.map(([k, l, sm]) => `<button class="chip${cur === k ? ' on' : ''}" data-${attr}="${esc(k)}">${esc(l)}${sm ? `<small>${esc(sm)}</small>` : ''}</button>`).join('')}</div>`;
 const needData = () => `<div class="empty"><b>${esc(T('need_data'))}</b>${esc(T('need_data2'))}</div>`;
 const statusCls = st => ({ over: 'bad', good: 'ok', under: 'warn', idle: 'dim' }[st]);
-const hsdText = h => esc(String(h || '').split(/[\/+]/).map(s => s.trim()).join('   ') || '—');
+const hsdText = h => String(h || '').split(/[\/+]/).map(s => esc(s.trim())).filter(Boolean).join('<br>') || '—';
 
 // ── Khung chung ──
 function render(keepSheet = false) {
@@ -192,6 +192,23 @@ function vHome() {
     + (miss.length ? `<button class="alert" data-go="more">⚠ ${esc(T('no_deliver', miss.length))}: ${esc(miss.join(', '))}</button>` : '');
 }
 
+// ── Bảng phẳng: mỗi dòng một mặt hàng, có tiêu đề cột cố định, không nhóm lồng thẻ ──────────────
+// cols: [{ h tiêu đề, c lớp ('m' chữ mono · 'n' số căn phải · 'b' đậm · 'k' ô ✓), f: dòng → html, a: dòng → thuộc tính của ô }]
+const col = (k, c, f, a) => ({ h: T(k), c, f, a });
+const tbl = (cols, rows, attr = () => '') => `<div class="tw"><table><thead><tr>${cols.map(c => `<th class="${c.c}">${esc(c.h)}</th>`).join('')}</tr></thead><tbody>`
+  + rows.map(r => `<tr ${attr(r)}>${cols.map(c => `<td class="${c.c}"${c.a ? ' ' + c.a(r) : ''}>${c.f(r)}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+const tickRow = (k, extra = '') => `${S.ticks[k] ? 'class="done" ' : ''}data-tick="${esc(k)}"${extra}`;
+const ckCol = () => ({ h: '✓', c: 'k', f: () => '<i>✓</i>' });
+const palMark = r => (r.pallet >= core.PALLET_THRESHOLD ? ` <span class="mark">板${r.pallet.toFixed(2)}</span>` : '');
+const sumLine = (n, q) => `<div class="sub tot">${n} ${esc(T('lines'))}${q != null ? ' · ' + nf(q) : ''}</div>`;
+const vehTable = (list, attr = '') => tbl([
+  col('c_xe', 'm b', v => esc(v.xe)),
+  col('c_who', '', v => { const who = S.disp.owner.get(v.xe); return `<span class="tg ${who ? 'who' : 'free'}">${esc(who || T('unassigned'))}</span>`; }),
+  col('col_nguyen', 'n', v => nf(v.nguyen)),
+  col('col_flip', 'n', v => (v.flip ? nf(v.flip) : '·')),
+  col('col_pick', 'n b', v => nf(v.nhatLe)),
+], list, v => `data-v="${esc(v.xe)}" ${attr}`);
+
 // ── Tab Chia đơn ────────────────────────────────────────────────────────────
 function vDisp() {
   if (!D) return needData();
@@ -209,12 +226,8 @@ function vDisp() {
   bodyFn = () => {
     const list = sel ? d.dispatchable.filter(v => d.owner.get(v.xe) === sel)
                      : [...d.dispatchable].sort((a, b) => (d.owner.has(a.xe) ? 1 : 0) - (d.owner.has(b.xe) ? 1 : 0) || b.nhatLe - a.nhatLe);
-    return `<h2>${esc(sel ? T('xe_of', sel) : T('vehicles'))}<em>${esc(sel ? T('tap_change') : T('tap_give'))}</em></h2><div class="card">`
-      + (list.length ? list.map(v => {
-          const who = d.owner.get(v.xe);
-          return `<button class="veh" data-v="${esc(v.xe)}"><b>${esc(v.xe)}</b><span class="tg ${who ? 'who' : 'free'}">${esc(who || T('unassigned'))}</span><span class="l">${nf(v.nhatLe)}</span>
-            <span class="s">${T('col_nguyen')} ${nf(v.nguyen)}${v.flip ? ` · ${T('col_flip')} ${nf(v.flip)}` : ''}</span></button>`;
-        }).join('') : `<div class="note">${esc(T('no_xe'))}</div>`) + '</div>';
+    return `<h2>${esc(sel ? T('xe_of', sel) : T('vehicles'))}<em>${esc(sel ? T('tap_change') : T('tap_give'))}</em></h2>`
+      + (list.length ? vehTable(list) : `<div class="note">${esc(T('no_xe'))}</div>`);
   };
   return head;
 }
@@ -236,16 +249,8 @@ function vehSheet() {
       + (who ? `<button class="opt" data-give=""><b class="g-warn">${esc(T('unassign'))}</b><span class="sub">${esc(T('unassign_sub'))}</span></button>` : '');
   } else {
     const rows = [...(D.rowsByXe.get(v.xe) || [])].sort((a, b) => a.don.localeCompare(b.don));
-    const dons = new Set(rows.map(r => r.don)).size;
-    const line = r => `<div class="row plain" style="padding-inline:0"><div class="mm" style="min-width:0"><div class="nm">${esc(r.ten)}${r.pallet >= core.PALLET_THRESHOLD ? `<span class="tag mark">板 ${r.pallet.toFixed(2)}</span>` : ''}</div>
-      <div class="s">${sh.flat ? esc(r.don) + ' · ' + esc(r.khach) + ' · ' : ''}${esc(r.ma)}</div></div><div class="q">${nf(r.qty)}</div></div>`;
-    h += `<div class="sub" style="margin-bottom:6px">${esc(T('orders_n', dons, rows.length))}</div>${seg('shf', [['0', T('by_order')], ['1', T('flat')]], sh.flat ? '1' : '0')}`;
-    if (sh.flat) h += rows.map(line).join('');
-    else {
-      const by = new Map();
-      for (const r of rows) (by.get(r.don) ?? by.set(r.don, []).get(r.don)).push(r);
-      for (const [don, list] of by) h += `<div class="sum" style="margin:6px -14px 0;padding-inline:14px"><span>${esc(don)} · ${esc(list[0].khach)}</span><span class="num">${nf(list.reduce((s, r) => s + r.qty, 0))}</span></div>` + list.map(line).join('');
-    }
+    h += `<div class="sub tot">${esc(T('orders_n', new Set(rows.map(r => r.don)).size, rows.length))}</div>`
+      + tbl([col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten) + palMark(r)), col('c_ma', 'm', r => esc(r.ma)), col('c_qty', 'n b', r => nf(r.qty))], rows);
   }
   return h;
 }
@@ -268,15 +273,14 @@ function vWork() {
 function wHsd(list) {
   if (!list.length) return `<div class="empty">${esc(T('need_hsd'))}</div>`;
   const chipHead = chips('hx', [['', T('all')], ...list.map(x => [x.xe, x.xe.replace(/^[A-Z]+-/, ''), `${x.count}`])], S.hsdXe);
-  bodyFn = () => (S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list).map(x => {
-    const rows = x.dons.flatMap(d => d.rows.map(r => ({ r, d })));
-    const dn = rows.filter(({ r }) => S.ticks[hsdKey(x.xe, r)]).length;
-    return `<section class="card grp"><h3><b>${esc(x.xe)}</b><span>${dn}/${rows.length}</span></h3>` + rows.map(({ r, d }) => {
-      const k = hsdKey(x.xe, r);
-      return `<button class="row${S.ticks[k] ? ' done' : ''}" data-tick="${esc(k)}"><span class="ck">✓</span><span class="mm"><div class="nm">${esc(r.ten)}</div><div class="hs">${hsdText(r.hsd)}</div>
-        <div class="s">${esc(r.loc)} · ${esc(r.ma)} · ${esc(d.don)}${d.khach ? ' · ' + esc(d.khach) : ''}</div></span><span class="q">${nf(r.qty)}</span></button>`;
-    }).join('') + '</section>';
-  }).join('');
+  bodyFn = () => {
+    const rows = (S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list).flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe, don: d.don, khach: d.khach }))));
+    const dn = rows.filter(r => S.ticks[hsdKey(r.xe, r)]).length;
+    return `<div class="sub tot">${dn}/${rows.length} ✓</div>` + tbl([
+      ckCol(), col('c_xe', 'm', r => esc(r.xe)), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
+      col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_loc', 'm', r => esc(r.loc)), col('c_qty', 'n b', r => nf(r.qty)),
+    ], rows, r => tickRow(hsdKey(r.xe, r)));
+  };
   return chipHead;
 }
 
@@ -290,14 +294,10 @@ function wSwap(all) {
     const q = S.q.trim().toLowerCase();
     const rows = all.filter(r => (!q || [r.xe, r.khach, r.ten, r.ma, r.don].join(' ').toLowerCase().includes(q)) && (S.swapFilter !== 'todo' || !S.ticks[swapKey(r)]));
     if (!rows.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-    const by = new Map();
-    for (const r of rows) (by.get(r.xe) ?? by.set(r.xe, []).get(r.xe)).push(r);
-    return [...by].map(([xe, list]) => {
-      const dn = list.filter(r => S.ticks[swapKey(r)]).length;
-      return `<section class="card grp"><h3><b>${esc(xe)}</b><span>${dn}/${list.length}</span></h3>` + list.map(r =>
-        `<button class="row${S.ticks[swapKey(r)] ? ' done' : ''}" data-tick="${esc(swapKey(r))}"><span class="ck">✓</span><span class="mm"><div class="nm">${esc(r.ten)}<span class="tag">${esc(r.swap)}</span></div>
-          ${r.hsd ? `<div class="hs">${hsdText(r.hsd)}</div>` : ''}<div class="s">${esc(r.khach)} · ${esc(r.don)} · ${r.pallet}板</div></span><span class="q">${nf(r.qty)}</span></button>`).join('') + '</section>';
-    }).join('');
+    return tbl([
+      ckCol(), col('c_xe', 'm', r => esc(r.xe)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten)),
+      col('c_swap', 'b a', r => esc(r.swap)), col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_qty', 'n b', r => nf(r.qty)),
+    ], rows, r => tickRow(swapKey(r)));
   };
   return head;
 }
@@ -311,20 +311,17 @@ function wPc(items) {
     const q = S.q.trim().toLowerCase();
     const shown = items.filter(it => (!q || (it.ten + ' ' + it.codes.join(' ')).toLowerCase().includes(q)) && ((S.pcFilter || 'all') !== 'need' || !core.calcItem(it).complete));
     if (!shown.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-    return '<div class="card">' + shown.map(pcCard).join('') + '</div><div class="note">' + esc(T('pc_note')) + '</div>';
+    // một dòng cho mỗi lô (hạn dùng) của mặt hàng; bấm ô ✓ để đánh dấu, bấm chỗ khác để nhập thông số
+    const rows = shown.flatMap(it => { const c = core.calcItem(it); return c.lots.map(l => ({ it, c, l, tk: 'p|' + it.ten + '|' + l.code })); });
+    return tbl([
+      { h: '✓', c: 'k', f: () => '<i>✓</i>', a: r => `data-tick="${esc(r.tk)}"` },
+      col('c_ten', 'b', r => esc(r.it.ten) + (r.it.mismatch ? ` <span class="mark" title="${esc(T('pc_mismatch'))}">⚠</span>` : '') + (r.c.complete ? '' : ' <span class="mark">?</span>')),
+      col('c_ma', 'm', r => esc(r.it.codes.join(','))), col('c_lot', 'm', r => esc(r.l.code || '—')),
+      col('c_qty', 'n', r => nf(r.l.qty)), col('c_out', 'n b', r => esc(r.l.out)), col('c_pull', 'n b a', r => r.l.pull ?? '—'),
+    ], rows, r => `${S.ticks[r.tk] ? 'class="done" ' : ''}data-pc="${esc(r.it.ten)}"`)
+      + '<div class="note">' + esc(T('pc_note')) + '</div>';
   };
   return head;
-}
-
-function pcCard(it) {
-  const c = core.calcItem(it);
-  const lots = c.lots.map(l => {
-    const tk = 'p|' + it.ten + '|' + l.code, on = S.ticks[tk] ? ' done' : '';
-    return `<span class="${on}" data-tick="${esc(tk)}">${esc(l.code || '—')}${c.lots.length > 1 ? '*' + l.qty : ''}</span><span class="r" data-tick="${esc(tk)}">${esc(l.out)}</span><span class="p" data-tick="${esc(tk)}">${l.pull ?? '—'}</span>`;
-  }).join('');
-  const allDone = c.lots.length && c.lots.every(l => S.ticks['p|' + it.ten + '|' + l.code]);
-  return `<div class="pc${allDone ? ' done' : ''}" data-pc="${esc(it.ten)}"><div class="h"><b>${esc(it.ten)}${it.mismatch ? ` <span class="mark" title="${esc(T('pc_mismatch'))}">⚠</span>` : ''}</b><span class="num" style="font-weight:800;font-size:15px">${nf(it.qty)}</span></div>
-    <div class="sub num">${esc(it.codes.join(','))}${c.complete ? ` · ${c.full} · ${c.per}×${c.layers}` : ''}</div><div class="lots">${lots}</div>${c.complete ? '' : `<div class="miss">${esc(T('pc_miss'))}</div>`}</div>`;
 }
 
 function pcSheet() {
@@ -346,12 +343,9 @@ function wOrders() {
   if (!S.ordXe || !D.xeList.includes(S.ordXe)) S.ordXe = D.xeList[0];
   const head = chips('ox', D.xeList.map(x => [x, x.replace(/^[A-Z]+-/, '')]), S.ordXe);
   bodyFn = () => {
-    const rows = D.rowsByXe.get(S.ordXe) || [];
-    const by = new Map();
-    for (const r of [...rows].sort((a, b) => a.don.localeCompare(b.don))) (by.get(r.don) ?? by.set(r.don, []).get(r.don)).push(r);
-    return `<div class="sub" style="margin-bottom:6px"><b class="mono">${esc(S.ordXe)}</b> · ${esc(T('orders_n', by.size, rows.length))}</div>`
-      + [...by].map(([don, list]) => `<section class="card grp"><h3><b>${esc(don)}</b><span>${esc(list[0].khach)} · ${nf(list.reduce((s, r) => s + r.qty, 0))}</span></h3>`
-        + list.map(r => `<div class="row plain"><div class="mm" style="min-width:0"><div class="nm">${esc(r.ten)}${r.pallet >= core.PALLET_THRESHOLD ? `<span class="tag mark">板 ${r.pallet.toFixed(2)}</span>` : ''}</div><div class="s">${esc(r.ma)}</div></div><div class="q">${nf(r.qty)}</div></div>`).join('') + '</section>').join('');
+    const rows = [...(D.rowsByXe.get(S.ordXe) || [])].sort((a, b) => a.don.localeCompare(b.don));
+    return `<div class="sub tot"><b class="mono">${esc(S.ordXe)}</b> · ${esc(T('orders_n', new Set(rows.map(r => r.don)).size, rows.length))}</div>`
+      + tbl([col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten) + palMark(r)), col('c_ma', 'm', r => esc(r.ma)), col('c_qty', 'n b', r => nf(r.qty))], rows);
   };
   return head;
 }
@@ -362,27 +356,28 @@ function vFind() {
   const ph = S.find === 'item' ? T('ph_item') : S.find === 'veh' ? T('ph_xe') : T('ph_search');
   let head = search(ph) + seg('fd', [['line', T('seg_lines')], ['item', T('seg_item')], ['veh', T('seg_veh')]], S.find);
   if (S.find === 'line') head += chips('dx', [['', T('all')], ...D.xeList.map(x => [x, x.replace(/^[A-Z]+-/, '')])], S.dataXe);
+  const LIMIT = 150, cut = rows => rows.slice(0, LIMIT);
   bodyFn = () => {
     const q = S.q.trim().toLowerCase();
     if (S.find === 'item') {
-      const it = D.items.filter(i => !q || (i.ten + ' ' + i.ma.join(' ')).toLowerCase().includes(q));
-      if (!it.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-      return it.slice(0, 60).map(i => `<section class="card grp"><div class="sum"><span>${esc(i.ten)} <span class="sub">${esc(i.ma.join(','))}</span></span><span class="num">${nf(i.qty)}</span></div>`
-        + i.rows.map(r => `<button class="res" data-v="${esc(r.xe)}"><span class="a num">${esc(r.xe)}</span><span class="b">${esc(r.don)} · ${esc(r.khach)}</span><span class="c">${nf(r.qty)}</span></button>`).join('') + '</section>').join('')
-        + (it.length > 60 ? `<div class="note">${esc(T('more_rows', it.length - 60))}</div>` : '') + `<div class="note">${esc(T('item_note'))}</div>`;
+      const rows = D.items.filter(i => !q || (i.ten + ' ' + i.ma.join(' ')).toLowerCase().includes(q))
+        .flatMap(i => i.rows.map(r => ({ ...r, ten: i.ten, ma: i.ma.join(',') })));
+      if (!rows.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
+      return sumLine(rows.length, rows.reduce((s, r) => s + r.qty, 0))
+        + tbl([col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)), col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_qty', 'n b', r => nf(r.qty))],
+               cut(rows), r => `data-v="${esc(r.xe)}"`)
+        + (rows.length > LIMIT ? `<div class="note">${esc(T('more_rows', rows.length - LIMIT))}</div>` : '') + `<div class="note">${esc(T('item_note'))}</div>`;
     }
     if (S.find === 'veh') {
       const list = D.stats.filter(v => !q || v.xe.toLowerCase().includes(q)).sort((a, b) => a.xe.localeCompare(b.xe));
       if (!list.length) return `<div class="empty">${esc(T('hsd_none_xe'))}</div>`;
-      return '<div class="card">' + list.map(v => {
-        const who = S.disp.owner.get(v.xe);
-        return `<button class="res" data-v="${esc(v.xe)}" data-detail="1"><span class="a num">${esc(v.xe)}</span><span class="b">${who ? esc(who) : esc(T('unassigned'))} · ${T('col_nguyen')} ${nf(v.nguyen)} · ${T('col_flip')} ${nf(v.flip)}</span><span class="c">${nf(v.nhatLe)}</span></button>`;
-      }).join('') + '</div>';
+      return vehTable(list, 'data-detail="1"');
     }
     const rows = D.noHsd.filter(r => (!S.dataXe || r.xe === S.dataXe) && (!q || [r.xe, r.don, r.khach, r.ma, r.ten].join(' ').toLowerCase().includes(q)));
     if (!rows.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-    return '<div class="card">' + rows.slice(0, 150).map(r => `<div class="res"><span class="a">${esc(r.ten)}</span><span class="b">${esc(r.xe)} · ${esc(r.don)} · ${esc(r.khach)} · ${esc(r.ma)}</span><span class="c">${nf(r.qty)}</span></div>`).join('') + '</div>'
-      + (rows.length > 150 ? `<div class="note">${esc(T('more_rows', rows.length - 150))}</div>` : '');
+    return sumLine(rows.length, rows.reduce((s, r) => s + r.qty, 0))
+      + tbl([col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten) + palMark(r)), col('c_ma', 'm', r => esc(r.ma)), col('c_qty', 'n b', r => nf(r.qty))], cut(rows))
+      + (rows.length > LIMIT ? `<div class="note">${esc(T('more_rows', rows.length - LIMIT))}</div>` : '');
   };
   return head;
 }
@@ -410,7 +405,7 @@ function vMore() {
     </div>
     <h2>${esc(T('lang'))}</h2><div class="card" style="padding:8px">${seg('lg', LANGS.map(([k, l]) => [k, l]), S.lang)}<div style="height:2px"></div></div>
     <h2>${esc(T('theme'))}</h2><div class="card list">${li('◐', T('theme'), esc(themeName), 'data-a="theme"')}</div>
-    <div class="cap">Aegis Flow Mobile · v7 · ${esc(T('offline'))}</div>`;
+    <div class="cap">Aegis Flow Mobile · v8 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Bảng trượt từ dưới lên ──────────────────────────────────────────────────
@@ -446,9 +441,8 @@ document.addEventListener('click', e => {
   if ((x = c('[data-dx]'))) { S.dataXe = x.dataset.dx; return render(); }
   if ((x = c('[data-lg]'))) { S.lang = x.dataset.lg; store.set('lang', S.lang); T = makeT(S.lang); return render(); }
   if ((x = c('[data-sh]'))) { S.sheet.tab = x.dataset.sh; return renderSheet(); }
-  if ((x = c('[data-shf]'))) { S.sheet.flat = x.dataset.shf === '1'; return renderSheet(); }
   if ((x = c('[data-st]'))) { S.pick = S.pick === x.dataset.st ? null : x.dataset.st; return render(); }
-  if ((x = c('[data-v]'))) { return openSheet({ type: 'veh', xe: x.dataset.v, tab: x.dataset.detail ? 'detail' : 'give', flat: false }); }
+  if ((x = c('[data-v]'))) { return openSheet({ type: 'veh', xe: x.dataset.v, tab: x.dataset.detail ? 'detail' : 'give' }); }
   if ((x = c('[data-give]'))) {
     const xe = S.sheet.xe, name = x.dataset.give;
     S.disp.give(xe, name || null);

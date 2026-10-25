@@ -23,6 +23,8 @@ Mở địa chỉ bằng **Safari** → Chia sẻ → **Thêm vào Màn hình ch
 - **Tra cứu:** Dòng hàng, Tìm hàng, Theo xe.
 - **Thêm:** nhân sự đi làm hôm nay (bật tắt, đổi năng lực), xe không giao hàng, dữ liệu & cài đặt, ngôn ngữ (Việt · 中文 · English), giao diện sáng/tối.
 
+Mọi danh sách dữ liệu (Dòng hàng, Tìm hàng, Theo xe, HSD, Đổi bản, PCHome, Đơn xe, chi tiết xe) là **bảng phẳng**: mỗi dòng một mặt hàng, có tiêu đề cột, không gom nhóm. Bấm dòng để đánh dấu ✓ (HSD, Đổi bản, PCHome) hoặc mở xe (Chia đơn, Tìm hàng, Theo xe).
+
 Bản điện thoại chỉ để xem, không có chức năng in. Danh sách nhân sự và xe lấy từ thư mục `Config` khi chạy `build_site.ps1`.
 
 ## 4. Khi sửa file cấu hình hoặc app
