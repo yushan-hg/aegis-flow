@@ -90,11 +90,12 @@ export function importBuffer(buf, name) {
     const ws = wb.Sheets['Data'] ?? wb.Sheets[wb.SheetNames[0]];
     const main = core.parseMain(core.sheetRows(XLSX, ws));
     const hsd = core.parseHsd(XLSX, wb);
-    S.data = { filename: name, loadedAt: Date.now(), main, hsd };
+    S.data = { filename: name, loadedAt: Date.now(), main, hsd, dropped: main.dropped };
     if (!store.set('data', S.data)) toast(T('save_fail'), { err: true });
     S.hsdXe = S.dataXe = ''; S.q = ''; S.ticks = {}; store.set('ticks', S.ticks);
     derive();
-    return T('imported_data', name, main.length, hsd.length);
+    const d = main.dropped;
+    return T('imported_data', name, main.length, hsd.length) + (d.xe + d.khach + d.neg ? '\n' + T('dropped', d.xe, d.khach, d.neg) : '');
   }
   if (kind === 'vitri') {
     const v = core.parseVitri(core.sheetRows(XLSX, wb.Sheets[wb.SheetNames[0]]));
@@ -273,7 +274,7 @@ function vMore() {
   const imported = v?.source === 'import' || o?.source === 'import';
   return heading(T('data_cfg'))
     + '<div class="card">'
-    + li(T('data_today'), d ? `${d.filename} · ${T('lines_n', d.main.length)}` : T('not_yet'), '', !d)
+    + li(T('data_today'), d ? `${d.filename} · ${T('lines_n', d.main.length)}${d.dropped && d.dropped.xe + d.dropped.khach + d.dropped.neg ? '\n' + T('dropped', d.dropped.xe, d.dropped.khach, d.dropped.neg) : ''}` : T('not_yet'), '', !d)
     + li(T('vitri'), v ? `${v.filename} · ${Object.keys(v.byMa).length}` : T('not_yet'), v ? src(v) : '')
     + li(T('doiban'), o ? `${o.filename} · ${Object.keys(o.dict).length}` : T('not_yet'), o ? src(o) : '')
     + '</div>'
@@ -282,7 +283,7 @@ function vMore() {
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
     + heading(T('clear_all'))
     + `<button class="btn wide warn" data-a="clearAll">${esc(sureClear ? T('sure') : T('clear_all_btn'))}</button><div class="note">${esc(T('clear_all_sub'))}</div>`
-    + `<div class="cap">Aegis Flow Mobile · v15 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v16 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Sự kiện ─────────────────────────────────────────────────────────────────

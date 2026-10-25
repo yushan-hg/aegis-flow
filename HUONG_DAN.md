@@ -13,7 +13,7 @@ Mở địa chỉ bằng **Safari** → Chia sẻ → **Thêm vào Màn hình ch
 
 ## 3. Dùng hằng ngày
 1. Chuyển file Excel dữ liệu ngày (全虹…xlsx) sang iPhone (Zalo, AirDrop, iCloud), lưu vào **Files**.
-2. Mở app → **Nạp file** → chọn file. **Không cần nạp file cấu hình**: `vi_tri_kho_config` và `doi_ban_config` đã có sẵn trong app.
+2. Mở app → **Nạp file** → chọn file gốc, không cần xử lý trước: app tự bỏ dòng số lượng âm, dòng xe CA99 / KEV-5601 (cả sheet HSD), dòng 送達方小名 hoặc 送達方名稱 để trống, rồi báo đã bỏ bao nhiêu dòng. **Không cần nạp file cấu hình**: `vi_tri_kho_config` và `doi_ban_config` đã có sẵn trong app.
 
 ## 3b. Bốn tab trong app
 Bản điện thoại chỉ để xem dữ liệu, không in, không chia đơn.

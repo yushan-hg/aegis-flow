@@ -103,3 +103,4 @@ tr.done td{opacity:.42} tr.done td.k{opacity:1} tr.done td.k i{background:var(--
 tr.done td.g{opacity:1}
 
 .kpis.big{margin-top:10px} .kpis.big b{font-size:28px} .kpis.big small{font:700 10.5px var(--sans);text-transform:uppercase;letter-spacing:.4px} .kpis .a b{color:var(--acc)}
+.li .d{white-space:pre-line}

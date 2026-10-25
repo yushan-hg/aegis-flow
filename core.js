@@ -3,10 +3,12 @@
 
 export const PALLET_THRESHOLD = 0.65;      // 板位數 từ mức này trở lên là hàng đổi bản
 export const PCHOME = 'Pchome十五庫';
-const EXCLUDE_XE = 'KEV-5601';
+// Xe không giao hàng: bỏ mọi dòng có số xe chứa một trong các mã này (sheet Data lẫn sheet HSD)
+const EXCLUDE_XE = ['KEV-5601', 'CA99'];
+const excludedXe = xe => EXCLUDE_XE.some(x => xe.toLowerCase().includes(x.toLowerCase()));
 
 const COL = { KHACH: '送達方小名', XE: '車牌號', DON: '裝運單號', MA: '物料號', TEN: '物料小名',
-              QTY: '數量', QTY_SRC: '數量(按基礎單位)', PALLET: '板位數' };
+              QTY: '數量', QTY_SRC: '數量(按基礎單位)', PALLET: '板位數', KHACH_FULL: '送達方名稱' };
 const REQUIRED = [COL.KHACH, COL.XE, COL.DON, COL.MA, COL.TEN, COL.QTY, COL.PALLET];
 const HSD_HEADERS = ['出貨效期', '效期', '新效', 'HạnSD', 'Hạn SD'];
 
@@ -40,16 +42,19 @@ export function parseMain(rows) {
   const missing = REQUIRED.filter(c => !(c in map));
   if (missing.length) throw new Error('Thiếu cột: ' + missing.join(', '));
 
+  // Lọc sơ bộ file gốc: bỏ dòng thuộc xe không giao hàng, dòng thiếu 送達方小名 hoặc 送達方名稱 (nếu file có cột này), dòng số lượng âm
+  const dropped = { xe: 0, khach: 0, neg: 0 };
+  const blank = v => { const x = t(v); return !x || ci(x, 'nan'); };
   const out = [];
   for (let r = h + 1; r < rows.length; r++) {
     const row = rows[r] || [];
     const xe = t(row[map[COL.XE]]);
     if (!xe || xe === '0' || ci(xe, 'nan') || xe === COL.XE) continue;
+    if (excludedXe(xe)) { dropped.xe++; continue; }
     const khach = t(row[map[COL.KHACH]]);
-    if (!khach || ci(khach, 'nan')) continue;
-    if (xe.toLowerCase().includes(EXCLUDE_XE.toLowerCase())) continue;
+    if (blank(khach) || (COL.KHACH_FULL in map && blank(row[map[COL.KHACH_FULL]]))) { dropped.khach++; continue; }
     const qty = Math.round(num(row[map[COL.QTY]]));
-    if (qty < 0) continue;
+    if (qty < 0) { dropped.neg++; continue; }
     out.push({ khach, xe, don: t(row[map[COL.DON]]), ma: t(row[map[COL.MA]]), ten: t(row[map[COL.TEN]]),
                qty, pallet: num(row[map[COL.PALLET]]) });
   }
@@ -60,7 +65,9 @@ export function parseMain(rows) {
     const g = agg.get(k);
     if (g) { g.qty += r.qty; g.pallet += r.pallet; } else agg.set(k, { ...r });
   }
-  return [...agg.values()].sort((a, b) => a.xe.localeCompare(b.xe) || a.don.localeCompare(b.don));
+  const result = [...agg.values()].sort((a, b) => a.xe.localeCompare(b.xe) || a.don.localeCompare(b.don));
+  result.dropped = dropped;
+  return result;
 }
 
 // ── Sheet HSD ───────────────────────────────────────────────────────────────
@@ -117,7 +124,7 @@ export function parseHsd(XLSX, wb) {
       for (let r = hr + 1; r <= end; r++) {
         const row = rows[r] || [];
         const xe = t(row[col.xe]);
-        if (!xe || xe === '0' || ci(xe, 'nan') || headerTexts.has(xe)) continue;
+        if (!xe || xe === '0' || ci(xe, 'nan') || headerTexts.has(xe) || excludedXe(xe)) continue;
         const don = t(row[col.don]);
         let raw = hsdCol >= 0 ? t(row[hsdCol]) : '';
         if (!raw) {
