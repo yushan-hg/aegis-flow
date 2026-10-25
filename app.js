@@ -132,10 +132,30 @@ const heading = (t, right = '') => `<h2><span>${esc(t)}</span>${right ? `<em>${e
 const LIMIT = 150;
 
 // ── Bảng phẳng: mỗi dòng một mặt hàng, tiêu đề cột dính trên đầu khi cuộn ──
-// cols: [{ h tiêu đề, c lớp ('m' chữ mono · 'n' số căn phải · 'b' đậm · 's' chữ nhỏ · 'a' màu nhấn), f: dòng → html }]
-const col = (k, c, f) => ({ h: T(k), c, f });
-const tbl = (cols, rows) => `<div class="tw"><table><thead><tr>${cols.map(c => `<th class="${c.c}">${esc(c.h)}</th>`).join('')}</tr></thead><tbody>`
-  + rows.map(r => `<tr>${cols.map(c => `<td class="${c.c}">${c.f(r)}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+// cols: [{ h tiêu đề, c lớp ('m' chữ mono · 'n' số · 'b' đậm · 's' chữ nhỏ · 'a' màu nhấn), f: dòng → html, g: cột gộp }]
+// Cột gộp (g) nằm liền nhau ở bên trái: giá trị lặp ở các dòng liên tiếp (số xe, số đơn, khách…) chỉ hiện một lần, ô được gộp
+// theo chiều dọc và căn giữa; ô con chỉ gộp trong phạm vi ô cha (cùng khách mới gộp xe, cùng xe mới gộp đơn).
+const col = (k, c, f, g = false) => ({ h: T(k), c, f, g });
+function tbl(cols, rows) {
+  const span = cols.map(() => rows.map(() => 1));
+  let path = rows.map(() => '');
+  cols.forEach((c, ci) => {
+    if (!c.g) return;
+    path = path.map((p, i) => p + '\u0001' + c.f(rows[i]));
+    for (let start = 0, i = 1; i <= rows.length; i++) {
+      if (i < rows.length && path[i] === path[start]) continue;
+      span[ci][start] = i - start;
+      for (let k = start + 1; k < i; k++) span[ci][k] = 0;
+      start = i;
+    }
+  });
+  const first = cols.findIndex(c => c.g);
+  const body = rows.map((r, ri) => `<tr${first >= 0 && span[first][ri] > 0 ? ' class="gs"' : ''}>` + cols.map((c, ci) => {
+    const n = span[ci][ri];
+    return n === 0 ? '' : `<td class="${c.c}${c.g ? ' g' : ''}"${n > 1 ? ` rowspan="${n}"` : ''}>${n > 1 ? `<div class="sk">${c.f(r)}</div>` : c.f(r)}</td>`;
+  }).join('') + '</tr>').join('');
+  return `<div class="tw"><table${first < 0 ? ' class="z"' : ''}><thead><tr>${cols.map(c => `<th class="${c.c}">${esc(c.h)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
 const cap = total => (total > LIMIT ? note(T('more_rows', total - LIMIT)) : '');
 
 // ── Khung chung ──
@@ -167,7 +187,7 @@ function vHome() {
   bodyFn = () => {
     if (!S.doiBan) return empty(T('need_swap_cfg'));
     if (!rows.length) return empty(T('no_swap'));
-    return tbl([col('c_khach', 's', r => esc(r.khach)), col('c_xe', 'm', r => esc(r.xe)), col('c_ten', 'b', r => esc(r.ten)), col('c_qty', 'n b', r => nf(r.qty)),
+    return tbl([col('c_khach', 's', r => esc(r.khach), true), col('c_xe', 'm', r => esc(r.xe), true), col('c_ten', 'b', r => esc(r.ten)), col('c_qty', 'n b', r => nf(r.qty)),
                 col('c_swap', 'b a', r => esc(r.swap)), col('c_hsd', 'm', r => hsdText(r.hsd))], rows);
   };
   return file + heading(T('gas')) + gas + heading(T('no_deliver'), miss.length ? T('xe_n', miss.length) : '') + missBox
@@ -190,7 +210,7 @@ function wHsd(list) {
     const sel = S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list;
     const rows = sel.flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe }))));
     return sumLine(T('xe_lines', sel.length, rows.length))
-      + tbl([col('c_xe', 'm', r => esc(r.xe)), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
+      + tbl([col('c_xe', 'm', r => esc(r.xe), true), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
              col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_loc', 'm', r => esc(r.loc)), col('c_qty', 'n b', r => nf(r.qty))], rows);
   };
   return chipHead;
@@ -223,14 +243,14 @@ function vFind() {
         .flatMap(i => i.rows.map(r => ({ ...r, ten: i.ten })));
       if (!rows.length) return empty(T('no_match'));
       return sumLine(`${rows.length} ${T('lines')}`, nf(rows.reduce((s, r) => s + r.qty, 0)))
-        + tbl([col('c_ten', 'b', r => esc(r.ten)), col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_qty', 'n b', r => nf(r.qty))], rows.slice(0, LIMIT))
+        + tbl([col('c_ten', 'b', r => esc(r.ten), true), col('c_xe', 'm', r => esc(r.xe), true), col('c_don', 'm', r => esc(r.don)), col('c_qty', 'n b', r => nf(r.qty))], rows.slice(0, LIMIT))
         + cap(rows.length);
     }
     // Khách · Xe · Đơn · Mã · Hàng · Số lượng
     const rows = D.noHsd.filter(r => (!S.dataXe || r.xe === S.dataXe) && (!q || [r.khach, r.xe, r.don, r.ma, r.ten].join(' ').toLowerCase().includes(q)));
     if (!rows.length) return empty(T('no_match'));
     return sumLine(`${rows.length} ${T('lines')}`, nf(rows.reduce((s, r) => s + r.qty, 0)))
-      + tbl([col('c_khach', 's', r => esc(r.khach)), col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_ma', 'm', r => esc(r.ma)),
+      + tbl([col('c_khach', 's', r => esc(r.khach), true), col('c_xe', 'm', r => esc(r.xe), true), col('c_don', 'm', r => esc(r.don), true), col('c_ma', 'm', r => esc(r.ma)),
              col('c_ten', 'b', r => esc(r.ten)), col('c_qty', 'n b', r => nf(r.qty))], rows.slice(0, LIMIT))
       + cap(rows.length);
   };
@@ -255,7 +275,7 @@ function vMore() {
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
     + heading(T('clear_all'))
     + `<button class="btn wide warn" data-a="clearAll">${esc(sureClear ? T('sure') : T('clear_all_btn'))}</button><div class="note">${esc(T('clear_all_sub'))}</div>`
-    + `<div class="cap">Aegis Flow Mobile · v12 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v13 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Sự kiện ─────────────────────────────────────────────────────────────────
