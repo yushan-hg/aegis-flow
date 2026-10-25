@@ -17,6 +17,7 @@ const S = {
   data: store.get('data', null),            // { filename, loadedAt, main, hsd }
   doiBan: store.get('doiban', null), vitri: store.get('vitri', null), listXe: store.get('listxe', []),
   lang: store.get('lang', 'vi'), theme: store.get('theme', ''),
+  ticks: store.get('ticks', {}),            // dấu ✓ ở Tìm hàng: { [khoá]: 1 }, xoá khi nạp file mới
   q: '', hsdXe: '', dataXe: '',
 };
 // Bản cũ lưu tên tab khác (disp, more, swap, …): giá trị lạ thì về tab đầu, nếu không màn hình sẽ trống
@@ -88,7 +89,7 @@ export function importBuffer(buf, name) {
     const hsd = core.parseHsd(XLSX, wb);
     S.data = { filename: name, loadedAt: Date.now(), main, hsd };
     if (!store.set('data', S.data)) toast(T('save_fail'), { err: true });
-    S.hsdXe = S.dataXe = ''; S.q = '';
+    S.hsdXe = S.dataXe = ''; S.q = ''; S.ticks = {}; store.set('ticks', S.ticks);
     derive();
     return T('imported_data', name, main.length, hsd.length);
   }
@@ -130,13 +131,14 @@ const xeShort = x => x.replace(/^[A-Z]+-/, '');
 const sumLine = (...parts) => `<div class="tot">${parts.map(esc).join(' · ')}</div>`;
 const heading = (t, right = '') => `<h2><span>${esc(t)}</span>${right ? `<em>${esc(right)}</em>` : ''}</h2>`;
 const LIMIT = 150;
+const itemKey = r => 'i|' + r.ten + '|' + r.xe + '|' + r.don;   // dấu ✓ ở Tìm hàng
 
 // ── Bảng phẳng: mỗi dòng một mặt hàng, tiêu đề cột dính trên đầu khi cuộn ──
 // cols: [{ h tiêu đề, c lớp ('m' chữ mono · 'n' số · 'b' đậm · 's' chữ nhỏ · 'a' màu nhấn), f: dòng → html, g: cột gộp }]
 // Cột gộp (g) nằm liền nhau ở bên trái: giá trị lặp ở các dòng liên tiếp (số xe, số đơn, khách…) chỉ hiện một lần, ô được gộp
 // theo chiều dọc và căn giữa; ô con chỉ gộp trong phạm vi ô cha (cùng khách mới gộp xe, cùng xe mới gộp đơn).
-const col = (k, c, f, g = false) => ({ h: T(k), c, f, g });
-function tbl(cols, rows) {
+const col = (k, c, f, g = false, a = null) => ({ h: T(k), c, f, g, a });   // a: dòng → thuộc tính của ô (vd data-tick)
+function tbl(cols, rows, rowCls = () => '') {
   const span = cols.map(() => rows.map(() => 1));
   let path = rows.map(() => '');
   cols.forEach((c, ci) => {
@@ -150,9 +152,9 @@ function tbl(cols, rows) {
     }
   });
   const first = cols.findIndex(c => c.g);
-  const body = rows.map((r, ri) => `<tr${first >= 0 && span[first][ri] > 0 ? ' class="gs"' : ''}>` + cols.map((c, ci) => {
+  const body = rows.map((r, ri) => `<tr class="${first >= 0 && span[first][ri] > 0 ? 'gs ' : ''}${rowCls(r)}">` + cols.map((c, ci) => {
     const n = span[ci][ri];
-    return n === 0 ? '' : `<td class="${c.c}${c.g ? ' g' : ''}"${n > 1 ? ` rowspan="${n}"` : ''}>${n > 1 ? `<div class="sk">${c.f(r)}</div>` : c.f(r)}</td>`;
+    return n === 0 ? '' : `<td class="${c.c}${c.g ? ' g' : ''}"${c.a ? ' ' + c.a(r) : ''}${n > 1 ? ` rowspan="${n}"` : ''}>${n > 1 ? `<div class="sk">${c.f(r)}</div>` : c.f(r)}</td>`;
   }).join('') + '</tr>').join('');
   return `<div class="tw"><table${first < 0 ? ' class="z"' : ''}><thead><tr>${cols.map(c => `<th class="${c.c}">${esc(c.h)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -210,8 +212,8 @@ function wHsd(list) {
     const sel = S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list;
     const rows = sel.flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe }))));
     return sumLine(T('xe_lines', sel.length, rows.length))
-      + tbl([col('c_xe', 'm', r => esc(r.xe), true), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
-             col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_loc', 'm', r => esc(r.loc)), col('c_qty', 'n b', r => nf(r.qty))], rows);
+      + tbl([col('c_xe', 'm', r => esc(r.xe), true), col('c_loc', 'm', r => esc(r.loc)), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
+             col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_qty', 'n b', r => nf(r.qty))], rows);
   };
   return chipHead;
 }
@@ -243,7 +245,8 @@ function vFind() {
         .flatMap(i => i.rows.map(r => ({ ...r, ten: i.ten })));
       if (!rows.length) return empty(T('no_match'));
       return sumLine(`${rows.length} ${T('lines')}`, nf(rows.reduce((s, r) => s + r.qty, 0)))
-        + tbl([col('c_ten', 'b', r => esc(r.ten), true), col('c_xe', 'm', r => esc(r.xe), true), col('c_don', 'm', r => esc(r.don)), col('c_qty', 'n b', r => nf(r.qty))], rows.slice(0, LIMIT))
+        + tbl([col('c_ten', 'b', r => esc(r.ten), true), col('c_xe', 'm', r => esc(r.xe), true), col('c_don', 'm', r => esc(r.don)), col('c_qty', 'n b', r => nf(r.qty)),
+               { h: '✓', c: 'k', f: () => '<i>✓</i>', a: r => `data-tick="${esc(itemKey(r))}"` }], rows.slice(0, LIMIT), r => (S.ticks[itemKey(r)] ? 'done' : ''))
         + cap(rows.length);
     }
     // Khách · Xe · Đơn · Mã · Hàng · Số lượng
@@ -275,7 +278,7 @@ function vMore() {
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
     + heading(T('clear_all'))
     + `<button class="btn wide warn" data-a="clearAll">${esc(sureClear ? T('sure') : T('clear_all_btn'))}</button><div class="note">${esc(T('clear_all_sub'))}</div>`
-    + `<div class="cap">Aegis Flow Mobile · v13 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v14 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Sự kiện ─────────────────────────────────────────────────────────────────
@@ -302,10 +305,17 @@ document.addEventListener('click', e => {
     }
     if (!sureClear) { sureClear = true; return render(); }
     sureClear = false;
-    ['data', 'vitri', 'doiban', 'listxe'].forEach(store.del);
-    Object.assign(S, { data: null, vitri: null, doiBan: null, listXe: [], hsdXe: '', dataXe: '', q: '' });
+    ['data', 'vitri', 'doiban', 'listxe', 'ticks'].forEach(store.del);
+    Object.assign(S, { data: null, vitri: null, doiBan: null, listXe: [], ticks: {}, hsdXe: '', dataXe: '', q: '' });
     derive(); render(); loadBundledConfig().then(() => render());
     return toast(T('cleared'));
+  }
+  if ((x = c('[data-tick]'))) {
+    const k = x.dataset.tick;
+    if (S.ticks[k]) delete S.ticks[k]; else S.ticks[k] = 1;
+    store.set('ticks', S.ticks);
+    $('#res').innerHTML = bodyFn();
+    return;
   }
   if ((x = c('[data-th]'))) { S.theme = x.dataset.th; store.set('theme', S.theme); applyTheme(); return render(); }
 });

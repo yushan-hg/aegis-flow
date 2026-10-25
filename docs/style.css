@@ -94,3 +94,10 @@ td.b{font-weight:800} td.n.b{font-size:13px} td.a{color:var(--acc)}
 
 /* ô gộp cao hơn màn hình: nhãn (xe, đơn, khách) trượt theo để luôn thấy khi cuộn */
 .sk{position:sticky;top:34px}
+
+/* ô chọn ✓ (Tìm hàng) */
+th.k,td.k{width:34px;padding-left:2px;padding-right:2px}
+td.k{cursor:pointer}
+td.k i{display:grid;place-items:center;width:20px;height:20px;margin:0 auto;border-radius:6px;border:1.5px solid var(--dim);font:normal 12px/1 var(--sans);color:transparent}
+tr.done td{opacity:.42} tr.done td.k{opacity:1} tr.done td.k i{background:var(--ok);border-color:var(--ok);color:var(--onacc)}
+tr.done td.g{opacity:1}
