@@ -1,12 +1,11 @@
 import * as core from './core.js';
-import { Dispatch, OVER } from './dispatch.js';
 import { makeT, LANGS } from './i18n.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const nf = n => Math.round(n).toLocaleString('en-US');
 
-// ── Lưu trên máy (localStorage): dữ liệu ngày, cấu hình, dấu ✓, nhập tay, ngôn ngữ. Kết quả chia đơn KHÔNG lưu. ──
+// ── Lưu trên máy (localStorage): dữ liệu ngày, cấu hình, ngôn ngữ, giao diện ──
 const store = {
   get(k, d) { try { const v = localStorage.getItem('af.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem('af.' + k, JSON.stringify(v)); return true; } catch { return false; } },
@@ -17,48 +16,36 @@ const S = {
   tab: store.get('tab', 'home'), seg: store.get('seg', 'hsd'), find: 'line',
   data: store.get('data', null),            // { filename, loadedAt, main, hsd }
   doiBan: store.get('doiban', null), vitri: store.get('vitri', null), listXe: store.get('listxe', []),
-  manual: store.get('manual', {}),          // nhập tay PCHome: { [tên hàng]: { per, layers, full } }
-  ticks: store.get('ticks', {}),            // đã xong: { [khoá]: 1 }
   lang: store.get('lang', 'vi'), theme: store.get('theme', ''),
-  staff: [],                                // [{name, weight, active}] — lấy từ cấu hình có sẵn, chỉ đổi trong phiên
-  q: '', swapFilter: 'all', hsdXe: '', ordXe: '', dataXe: '', pick: null,
-  disp: null, sheet: null,
+  q: '', hsdXe: '', dataXe: '',
 };
-// Bản cũ lưu tên tab khác (swap, pchome, hsd, settings): giá trị lạ thì về tab đầu, nếu không màn hình sẽ trống
-if (!['home', 'disp', 'work', 'find', 'more'].includes(S.tab)) S.tab = 'home';
-if (!['hsd', 'swap', 'pc', 'ord'].includes(S.seg)) S.seg = 'hsd';
+// Bản cũ lưu tên tab khác (disp, more, swap, …): giá trị lạ thì về tab đầu, nếu không màn hình sẽ trống
+if (!['home', 'work', 'find'].includes(S.tab)) S.tab = 'home';
+if (!['hsd', 'pc'].includes(S.seg)) S.seg = 'hsd';
 if (!['vi', 'zh', 'en'].includes(S.lang)) S.lang = 'vi';
+if (!['', 'dark', 'light'].includes(S.theme)) S.theme = '';
 let T = makeT(S.lang);
 let D = null;          // dữ liệu suy ra từ file ngày
 let bodyFn = () => '';
+let tail = '';          // phần dưới danh sách (Trang chủ: ngôn ngữ, giao diện)
 
 // ── Dữ liệu suy ra ──────────────────────────────────────────────────────────
+const GAS = ['CO2F7', 'CO2F5', 'N2F13'];   // bình khí: cùng danh sách với app Windows
+
 function derive() {
   D = null;
-  if (!S.data) { S.disp = null; return; }
+  if (!S.data) return;
   const { main, hsd } = S.data;
   const noHsd = core.excludeHsd(main, hsd);
-  const stats = core.buildStats(noHsd);
-  const byXe = new Map(stats.map(s => [s.xe, s]));
   const rowsByXe = new Map();
   for (const r of noHsd) (rowsByXe.get(r.xe) ?? rowsByXe.set(r.xe, []).get(r.xe)).push(r);
-  D = {
-    main, hsd, noHsd, stats, byXe, rowsByXe,
-    xeAll: [...new Set(main.map(r => r.xe))].sort(),
-    xeList: [...rowsByXe.keys()].sort(),
-    items: core.buildItems(noHsd),
-  };
-  S.disp = new Dispatch(stats, S.staff);
+  D = { main, hsd, noHsd, xeAll: [...new Set(main.map(r => r.xe))], xeList: [...rowsByXe.keys()].sort(), items: core.buildItems(noHsd) };
 }
 const vitriOr = () => S.vitri || { byMa: {}, byTen: {} };
 const swapRows = () => (D && S.doiBan ? core.buildSwap(D.main, D.hsd, S.doiBan.dict) : []);
 const hsdList = () => (D ? core.buildHsd(D.hsd, vitriOr()) : []);
-const pcItems = () => (D ? core.buildPchome(D.main, D.hsd, vitriOr(), S.manual) : []);
-function pcTotals(items) {
-  let full = 0, loose = 0, pull = 0, need = 0;
-  for (const it of items) { const c = core.calcItem(it); full += c.nFull; loose += c.nLoose; pull += c.nPull; if (!c.complete) need++; }
-  return { full, loose, pull, need };
-}
+const pcItems = () => (D ? core.buildPchome(D.main, D.hsd, vitriOr(), {}) : []);
+const gasQty = ma => D.main.filter(r => !core.isPchome(r.khach) && String(r.ten).toUpperCase() === ma).reduce((s, r) => s + r.qty, 0);
 const missingXe = () => {
   if (!D) return [];
   const got = new Set(D.xeAll.map(x => x.toLowerCase()));
@@ -68,10 +55,10 @@ const missingXe = () => {
 
 // ── Thông báo ngắn ──
 let toastTimer;
-function toast(msg, { err = false, undo = false, ms = 5000 } = {}) {
+function toast(msg, { err = false, ms = 5000 } = {}) {
   const el = $('#toast');
   el.className = 'toast' + (err ? ' err' : '');
-  el.innerHTML = `<span>${esc(msg)}</span>${undo ? `<button class="btn" data-a="undo">${esc(T('undo'))}</button>` : ''}`;
+  el.textContent = msg;
   el.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
@@ -97,8 +84,7 @@ export function importBuffer(buf, name) {
     const hsd = core.parseHsd(XLSX, wb);
     S.data = { filename: name, loadedAt: Date.now(), main, hsd };
     if (!store.set('data', S.data)) toast(T('save_fail'), { err: true });
-    S.ticks = {}; store.set('ticks', S.ticks);       // sang ngày mới thì xoá dấu ✓ cũ
-    S.hsdXe = S.ordXe = S.dataXe = ''; S.pick = null;
+    S.hsdXe = S.dataXe = ''; S.q = '';
     derive();
     return T('imported_data', name, main.length, hsd.length);
   }
@@ -125,298 +111,130 @@ async function loadBundledConfig() {
     if (b.vitri && S.vitri?.source !== 'import') { S.vitri = { ...b.vitri, source: 'bundled' }; store.set('vitri', S.vitri); changed = true; }
     if (b.doiBan && S.doiBan?.source !== 'import') { S.doiBan = { ...b.doiBan, source: 'bundled' }; store.set('doiban', S.doiBan); changed = true; }
     if (b.listXe) { S.listXe = b.listXe; store.set('listxe', S.listXe); changed = true; }
-    if (b.staff && !S.staff.length) { S.staff = b.staff.map(s => ({ ...s })); if (D) S.disp = new Dispatch(D.stats, S.staff); changed = true; }
     return changed;
   } catch { return false; }
 }
 
 // ── Mảnh giao diện dùng chung ──
-const kpis = (cells, cls = '') => `<div class="kpis ${cls}">${cells.map(([v, l, c]) => `<div class="${c || ''}"><b>${v}</b><small>${esc(l)}</small></div>`).join('')}</div>`;
-const pct = (d, t) => (t ? Math.round(100 * d / t) : 0);
 const search = ph => `<input class="search" id="q" type="search" placeholder="${esc(ph)}" value="${esc(S.q)}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">`;
 const seg = (attr, list, cur) => `<div class="seg">${list.map(([k, l, n]) => `<button data-${attr}="${k}" class="${cur === k ? 'on' : ''}">${esc(l)}${n != null ? `<em>${n}</em>` : ''}</button>`).join('')}</div>`;
 const chips = (attr, list, cur) => `<div class="chips">${list.map(([k, l, sm]) => `<button class="chip${cur === k ? ' on' : ''}" data-${attr}="${esc(k)}">${esc(l)}${sm ? `<small>${esc(sm)}</small>` : ''}</button>`).join('')}</div>`;
-const needData = () => `<div class="empty"><b>${esc(T('need_data'))}</b>${esc(T('need_data2'))}</div>`;
-const statusCls = st => ({ over: 'bad', good: 'ok', under: 'warn', idle: 'dim' }[st]);
+const note = s => `<div class="note">${esc(s)}</div>`;
+const empty = (a, b) => `<div class="empty"><b>${esc(a)}</b>${b ? esc(b) : ''}</div>`;
 const hsdText = h => String(h || '').split(/[\/+]/).map(s => esc(s.trim())).filter(Boolean).join('<br>') || '—';
+const xeShort = x => x.replace(/^[A-Z]+-/, '');
+const sumLine = (...parts) => `<div class="tot">${parts.map(esc).join(' · ')}</div>`;
+const heading = (t, right = '') => `<h2><span>${esc(t)}</span>${right ? `<em>${esc(right)}</em>` : ''}</h2>`;
+const LIMIT = 150;
+
+// ── Bảng phẳng: mỗi dòng một mặt hàng, tiêu đề cột dính trên đầu khi cuộn ──
+// cols: [{ h tiêu đề, c lớp ('m' chữ mono · 'n' số căn phải · 'b' đậm · 's' chữ nhỏ · 'a' màu nhấn), f: dòng → html }]
+const col = (k, c, f) => ({ h: T(k), c, f });
+const tbl = (cols, rows) => `<div class="tw"><table><thead><tr>${cols.map(c => `<th class="${c.c}">${esc(c.h)}</th>`).join('')}</tr></thead><tbody>`
+  + rows.map(r => `<tr>${cols.map(c => `<td class="${c.c}">${c.f(r)}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+const cap = total => (total > LIMIT ? note(T('more_rows', total - LIMIT)) : '');
 
 // ── Khung chung ──
-function render(keepSheet = false) {
-  const names = { home: 'home', disp: 'disp', work: 'work', find: 'find', more: 'more' };
+function render() {
   document.documentElement.lang = S.lang;
   document.querySelectorAll('.nav button').forEach(b => {
     b.classList.toggle('on', b.dataset.t === S.tab);
-    b.querySelector('span').textContent = T('t_' + names[b.dataset.t]);
+    b.querySelector('span').textContent = T('t_' + b.dataset.t);
   });
   $('#title').textContent = T('t_' + S.tab);
-  $('#fileName').textContent = S.data ? S.data.filename : T('noFile');
   const sc = $('#screen'), y = sc.scrollTop;
-  bodyFn = () => '';
-  const head = { home: vHome, disp: vDisp, work: vWork, find: vFind, more: vMore }[S.tab]();
-  sc.innerHTML = head + '<div id="res">' + bodyFn() + '</div>';
+  bodyFn = () => ''; tail = '';
+  const head = { home: vHome, work: vWork, find: vFind }[S.tab]();
+  sc.innerHTML = head + '<div id="res">' + bodyFn() + '</div>' + tail;
   sc.scrollTop = y;
-  const dot = document.querySelector('.nav .dot');
-  if (dot) dot.hidden = !(D && pcTotals(pcItems()).need);
-  if (S.sheet && !keepSheet) renderSheet();
 }
-function go(tab, seg) {
-  S.tab = tab; if (seg) { S.seg = seg; store.set('seg', seg); }
-  S.q = ''; S.pick = null; store.set('tab', tab);
-  closeSheet(); render(); $('#screen').scrollTop = 0;
-}
+function go(tab) { S.tab = tab; S.q = ''; store.set('tab', tab); render(); $('#screen').scrollTop = 0; }
 
-// ── Tab Hôm nay ─────────────────────────────────────────────────────────────
+// ── Tab Trang chủ: nạp file · bình khí · xe không giao hàng · đổi bản ──────
 function vHome() {
-  if (!D) return needData();
-  const total = D.noHsd.reduce((s, r) => s + r.qty, 0), pick = D.stats.reduce((s, v) => s + v.nhatLe, 0);
-  const dons = new Set(D.noHsd.map(r => r.don)).size;
-  const pal = D.noHsd.filter(r => !core.isPchome(r.khach)).reduce((s, r) => s + r.pallet, 0);
-  const hl = hsdList(), hTotal = hl.reduce((s, x) => s + x.count, 0);
-  const hDone = hl.reduce((s, x) => s + x.dons.reduce((a, d) => a + d.rows.filter(r => S.ticks[hsdKey(x.xe, r)]).length, 0), 0);
-  const sw = swapRows(), sDone = sw.filter(r => S.ticks[swapKey(r)]).length;
-  const items = pcItems(), pt = pcTotals(items);
-  const disp = S.disp, asg = disp.assignedCount, dsp = disp.dispatchable.length;
-  const w = disp.worst();
-  const wText = !w ? '—' : w === 'balanced' ? T('balanced') : `${w[0]} ${w[1] > 0 ? '+' : '−'}${Math.abs(w[1])}%`;
+  const file = `<section class="file"><div class="fi"><b>${esc(S.data ? S.data.filename : T('noFile'))}</b>${S.data ? `<small>${esc(T('file_lines', S.data.main.length, S.data.hsd.length))}</small>` : ''}</div>
+    <label class="btn pri" for="fileInput">⤒ ${esc(S.data ? T('reload') : T('load'))}</label></section>`;
+  const settings = heading(T('lang')) + seg('lg', LANGS, S.lang)
+    + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
+    + `<div class="cap">Aegis Flow Mobile · v9 · ${esc(T('offline'))}</div>`;
+  tail = settings;
+  if (!D) return file + empty(T('need_data'), T('need_data2'));
+
+  const gas = `<div class="kpis">${GAS.map(ma => { const q = gasQty(ma); return `<div class="${q ? '' : 'z'}"><b>${nf(q)}</b><small>${esc(ma)}</small></div>`; }).join('')}</div>`;
   const miss = missingXe();
-  const tile = (go, title, v, sm, d, p) => `<button class="card tile" data-go="${go}"><span class="t">${esc(title)}</span><span class="v">${v}<small>${esc(sm)}</small></span><span class="d">${esc(d)}</span>${p != null ? `<div class="prog"><i style="width:${p}%"></i></div>` : ''}</button>`;
-  return kpis([[nf(total), T('k_total')], [nf(pick), T('k_pick'), 'a']], 'big')
-    + kpis([[D.xeAll.length, T('k_xe')], [dons, T('k_don')], [pal.toFixed(1), T('k_pal')]])
-    + `<h2>${esc(T('progress'))}</h2>`
-    + (hTotal ? tile('work:hsd', T('hsd_first'), `${hDone}/${hTotal}`, T('done_lines'), `${hl.length} xe · ${T('hsd_sub')}`, pct(hDone, hTotal)) : '')
-    + tile('disp', T('t_disp'), `${asg}/${dsp}`, T('xe_given'), `${T('worst')} ${wText}`, pct(asg, dsp))
-    + tile('work:swap', T('swap'), S.doiBan ? `${sDone}/${sw.length}` : '—', T('done_lines'), `${new Set(sw.map(r => r.xe)).size} xe`, S.doiBan ? pct(sDone, sw.length) : null)
-    + (items.length ? tile('work:pc', T('pchome'), items.length, T('items'), `${T('pull_out')} ${pt.full}/${pt.loose} · ${T('pull_big')} ${pt.pull} ${T('pallets')}`, null) : '')
-    + ((pt.need || miss.length) ? `<h2>${esc(T('attention'))}</h2>` : '')
-    + (pt.need ? `<button class="alert" data-go="work:pc">⚠ ${esc(T('pc_miss_n', pt.need))}</button>` : '')
-    + (miss.length ? `<button class="alert" data-go="more">⚠ ${esc(T('no_deliver', miss.length))}: ${esc(miss.join(', '))}</button>` : '');
-}
-
-// ── Bảng phẳng: mỗi dòng một mặt hàng, có tiêu đề cột cố định, không nhóm lồng thẻ ──────────────
-// cols: [{ h tiêu đề, c lớp ('m' chữ mono · 'n' số căn phải · 'b' đậm · 'k' ô ✓), f: dòng → html, a: dòng → thuộc tính của ô }]
-const col = (k, c, f, a) => ({ h: T(k), c, f, a });
-const tbl = (cols, rows, attr = () => '') => `<div class="tw"><table><thead><tr>${cols.map(c => `<th class="${c.c}">${esc(c.h)}</th>`).join('')}</tr></thead><tbody>`
-  + rows.map(r => `<tr ${attr(r)}>${cols.map(c => `<td class="${c.c}"${c.a ? ' ' + c.a(r) : ''}>${c.f(r)}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
-const tickRow = (k, extra = '') => `${S.ticks[k] ? 'class="done" ' : ''}data-tick="${esc(k)}"${extra}`;
-const ckCol = () => ({ h: '✓', c: 'k', f: () => '<i>✓</i>' });
-const palMark = r => (r.pallet >= core.PALLET_THRESHOLD ? ` <span class="mark">板${r.pallet.toFixed(2)}</span>` : '');
-const sumLine = (n, q) => `<div class="sub tot">${n} ${esc(T('lines'))}${q != null ? ' · ' + nf(q) : ''}</div>`;
-const vehTable = (list, attr = '') => tbl([
-  col('c_xe', 'm b', v => esc(v.xe)),
-  col('c_who', '', v => { const who = S.disp.owner.get(v.xe); return `<span class="tg ${who ? 'who' : 'free'}">${esc(who || T('unassigned'))}</span>`; }),
-  col('col_nguyen', 'n', v => nf(v.nguyen)),
-  col('col_flip', 'n', v => (v.flip ? nf(v.flip) : '·')),
-  col('col_pick', 'n b', v => nf(v.nhatLe)),
-], list, v => `data-v="${esc(v.xe)}" ${attr}`);
-
-// ── Tab Chia đơn ────────────────────────────────────────────────────────────
-function vDisp() {
-  if (!D) return needData();
-  const d = S.disp, ws = d.workers();
-  const avg = d.avgFactor();
-  const sel = S.pick;
-  const cards = ws.map(s => {
-    const p = d.pct(s.name, 0, avg), st = d.status(s.name), c = statusCls(st), n = d.xeOf(s.name).length;
-    return `<button class="sc${sel === s.name ? ' on' : ''}" data-st="${esc(s.name)}"><div class="n"><span>${esc(s.name)}</span><small>${esc(s.weight)}</small></div>
-      <div class="p g-${c}">${p}%</div><div class="m"><i class="bg-${c}" style="width:${Math.min(100, p / 1.4)}%"></i></div>
-      <small>${n} xe · ${nf(d.load(s.name))}</small></button>`;
-  }).join('');
-  const head = `<div class="staff">${cards}</div>
-    <div class="act"><button class="btn pri flex" data-a="auto">${esc(T('auto'))}</button><button class="btn flex" data-a="rebal">${esc(T('rebal'))}</button><button class="btn" data-a="undo" ${d.canUndo ? '' : 'disabled'}>↶ ${esc(T('undo'))}</button></div>`;
+  const missBox = miss.length ? `<div class="tags">${miss.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : note(T('none'));
+  const rows = swapRows();
   bodyFn = () => {
-    const list = sel ? d.dispatchable.filter(v => d.owner.get(v.xe) === sel)
-                     : [...d.dispatchable].sort((a, b) => (d.owner.has(a.xe) ? 1 : 0) - (d.owner.has(b.xe) ? 1 : 0) || b.nhatLe - a.nhatLe);
-    return `<h2>${esc(sel ? T('xe_of', sel) : T('vehicles'))}<em>${esc(sel ? T('tap_change') : T('tap_give'))}</em></h2>`
-      + (list.length ? vehTable(list) : `<div class="note">${esc(T('no_xe'))}</div>`);
+    if (!S.doiBan) return empty(T('need_swap_cfg'));
+    if (!rows.length) return empty(T('no_swap'));
+    return tbl([col('c_khach', 's', r => esc(r.khach)), col('c_xe', 'm', r => esc(r.xe)), col('c_ten', 'b', r => esc(r.ten)), col('c_qty', 'n b', r => nf(r.qty)),
+                col('c_swap', 'b a', r => esc(r.swap)), col('c_hsd', 'm', r => hsdText(r.hsd))], rows);
   };
-  return head;
+  return file + heading(T('gas')) + gas + heading(T('no_deliver'), miss.length ? T('xe_n', miss.length) : '') + missBox
+    + heading(T('swap'), rows.length ? `${rows.length} ${T('lines')}` : '');
 }
 
-function vehSheet() {
-  const sh = S.sheet, d = S.disp, v = D.byXe.get(sh.xe);
-  if (!v) return '';
-  const who = d.owner.get(v.xe);
-  let h = `<div class="grab"></div><h4><span class="mono">${esc(v.xe)}</span><span class="num">${nf(v.nhatLe)}</span></h4>
-    <div class="sub">${T('col_nguyen')} ${nf(v.nguyen)} · ${T('col_flip')} ${nf(v.flip)} · ${T('col_pick')} ${nf(v.nhatLe)}${who ? ' · ' + esc(who) : ''}</div>
-    <div style="height:8px"></div>${seg('sh', [['give', T('give')], ['detail', T('detail')]], sh.tab)}`;
-  if (sh.tab === 'give') {
-    const avg = d.avgFactor();
-    h += `<div class="sub" style="margin-bottom:4px">${esc(T('give_to'))}</div>`
-      + d.workers().filter(s => s.active || who === s.name).map(s => {
-        const cur = who === s.name, p = d.pct(s.name, cur ? 0 : v.nhatLe, avg), c = p > OVER ? 'bad' : p < 85 ? 'warn' : 'ok';
-        return `<button class="opt${cur ? ' cur' : ''}" data-give="${esc(s.name)}"><b>${esc(s.name)}${cur ? ' · ' + esc(T('current')) : ''}</b><span class="sub">${d.xeOf(s.name).length} xe · ${T('load')} ${nf(d.load(s.name))}</span><span class="pv g-${c}">${p}%</span></button>`;
-      }).join('')
-      + (who ? `<button class="opt" data-give=""><b class="g-warn">${esc(T('unassign'))}</b><span class="sub">${esc(T('unassign_sub'))}</span></button>` : '');
-  } else {
-    const rows = [...(D.rowsByXe.get(v.xe) || [])].sort((a, b) => a.don.localeCompare(b.don));
-    h += `<div class="sub tot">${esc(T('orders_n', new Set(rows.map(r => r.don)).size, rows.length))}</div>`
-      + tbl([col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten) + palMark(r)), col('c_ma', 'm', r => esc(r.ma)), col('c_qty', 'n b', r => nf(r.qty))], rows);
-  }
-  return h;
-}
-
-// ── Tab Việc làm ────────────────────────────────────────────────────────────
-const swapKey = r => 's|' + r.xe + '|' + r.don + '|' + r.ma;
-const hsdKey = (xe, r) => 'h|' + xe + '|' + r.don + '|' + r.ma + '|' + r.hsd;
-
+// ── Tab Việc làm: HSD · PCHome ──────────────────────────────────────────────
 function vWork() {
-  if (!D) return needData();
-  const hl = hsdList(), sw = swapRows(), pcs = pcItems();
-  const hCount = hl.reduce((s, x) => s + x.count, 0);
-  const head = seg('seg', [['hsd', T('seg_hsd'), hCount], ['swap', T('swap'), sw.length], ['pc', T('pchome'), pcs.length], ['ord', T('orders')]], S.seg);
-  if (S.seg === 'hsd') return head + wHsd(hl);
-  if (S.seg === 'swap') return head + wSwap(sw);
-  if (S.seg === 'pc') return head + wPc(pcs);
-  return head + wOrders();
+  if (!D) return empty(T('need_data'), T('need_data2'));
+  const hl = hsdList(), pcs = pcItems();
+  const head = seg('seg', [['hsd', T('seg_hsd'), hl.reduce((s, x) => s + x.count, 0)], ['pc', T('pchome'), pcs.length]], S.seg);
+  return head + (S.seg === 'hsd' ? wHsd(hl) : wPc(pcs));
 }
 
+// HSD: các xe hôm nay có hàng phải nhặt theo hạn sử dụng
 function wHsd(list) {
-  if (!list.length) return `<div class="empty">${esc(T('need_hsd'))}</div>`;
-  const chipHead = chips('hx', [['', T('all')], ...list.map(x => [x.xe, x.xe.replace(/^[A-Z]+-/, ''), `${x.count}`])], S.hsdXe);
+  if (!list.length) return empty(T('need_hsd'));
+  const chipHead = chips('hx', [['', T('all')], ...list.map(x => [x.xe, xeShort(x.xe), `${x.count}`])], S.hsdXe);
   bodyFn = () => {
-    const rows = (S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list).flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe, don: d.don, khach: d.khach }))));
-    const dn = rows.filter(r => S.ticks[hsdKey(r.xe, r)]).length;
-    return `<div class="sub tot">${dn}/${rows.length} ✓</div>` + tbl([
-      ckCol(), col('c_xe', 'm', r => esc(r.xe)), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
-      col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_loc', 'm', r => esc(r.loc)), col('c_qty', 'n b', r => nf(r.qty)),
-    ], rows, r => tickRow(hsdKey(r.xe, r)));
+    const sel = S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list;
+    const rows = sel.flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe }))));
+    return sumLine(T('xe_lines', sel.length, rows.length))
+      + tbl([col('c_xe', 'm', r => esc(r.xe)), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
+             col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_loc', 'm', r => esc(r.loc)), col('c_qty', 'n b', r => nf(r.qty))], rows);
   };
   return chipHead;
 }
 
-function wSwap(all) {
-  if (!S.doiBan) return `<div class="empty">${esc(T('need_swap_cfg'))}</div>`;
-  const doneN = all.filter(r => S.ticks[swapKey(r)]).length;
-  const head = kpis([[all.length, T('lines')], [new Set(all.map(r => r.xe)).size, 'xe'], [`${doneN}/${all.length}`, '✓', doneN === all.length && all.length ? 'g' : '']])
-    + search(T('ph_search')) + seg('sf', [['all', T('all')], ['todo', T('todo')]], S.swapFilter);
-  bodyFn = () => {
-    if (!all.length) return `<div class="empty">${esc(T('no_swap'))}</div>`;
-    const q = S.q.trim().toLowerCase();
-    const rows = all.filter(r => (!q || [r.xe, r.khach, r.ten, r.ma, r.don].join(' ').toLowerCase().includes(q)) && (S.swapFilter !== 'todo' || !S.ticks[swapKey(r)]));
-    if (!rows.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-    return tbl([
-      ckCol(), col('c_xe', 'm', r => esc(r.xe)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten)),
-      col('c_swap', 'b a', r => esc(r.swap)), col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_qty', 'n b', r => nf(r.qty)),
-    ], rows, r => tickRow(swapKey(r)));
-  };
-  return head;
-}
-
+// PCHome: tên hàng · số lượng · hạn sử dụng · bản chẵn/lẻ, xếp số lượng từ lớn đến nhỏ (mỗi hạn dùng một dòng)
 function wPc(items) {
-  if (!items.length) return `<div class="empty">${esc(T('no_pc'))}</div>`;
-  const t = pcTotals(items);
-  const head = kpis([[`${t.full}/${t.loose}`, T('pc_out')], [t.pull, T('pc_pull'), 'a'], [t.need, T('pc_miss_k'), t.need ? 'w' : 'g']])
-    + search(T('ph_search')) + seg('pf', [['all', T('all')], ['need', T('need')]], S.pcFilter || 'all');
+  if (!items.length) return empty(T('no_pc'));
   bodyFn = () => {
-    const q = S.q.trim().toLowerCase();
-    const shown = items.filter(it => (!q || (it.ten + ' ' + it.codes.join(' ')).toLowerCase().includes(q)) && ((S.pcFilter || 'all') !== 'need' || !core.calcItem(it).complete));
-    if (!shown.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-    // một dòng cho mỗi lô (hạn dùng) của mặt hàng; bấm ô ✓ để đánh dấu, bấm chỗ khác để nhập thông số
-    const rows = shown.flatMap(it => { const c = core.calcItem(it); return c.lots.map(l => ({ it, c, l, tk: 'p|' + it.ten + '|' + l.code })); });
+    const rows = items.flatMap(it => { const c = core.calcItem(it); return c.lots.map(l => ({ it, c, l })); })
+      .sort((a, b) => b.l.qty - a.l.qty || a.it.ten.localeCompare(b.it.ten));
     return tbl([
-      { h: '✓', c: 'k', f: () => '<i>✓</i>', a: r => `data-tick="${esc(r.tk)}"` },
-      col('c_ten', 'b', r => esc(r.it.ten) + (r.it.mismatch ? ` <span class="mark" title="${esc(T('pc_mismatch'))}">⚠</span>` : '') + (r.c.complete ? '' : ' <span class="mark">?</span>')),
-      col('c_ma', 'm', r => esc(r.it.codes.join(','))), col('c_lot', 'm', r => esc(r.l.code || '—')),
-      col('c_qty', 'n', r => nf(r.l.qty)), col('c_out', 'n b', r => esc(r.l.out)), col('c_pull', 'n b a', r => r.l.pull ?? '—'),
-    ], rows, r => `${S.ticks[r.tk] ? 'class="done" ' : ''}data-pc="${esc(r.it.ten)}"`)
-      + '<div class="note">' + esc(T('pc_note')) + '</div>';
+      col('c_ten', 'b', r => esc(r.it.ten) + (r.it.mismatch ? ` <span class="mark" title="${esc(T('pc_mismatch'))}">⚠</span>` : '') + (r.c.cap ? '' : ' <span class="mark">?</span>')),
+      col('c_qty', 'n b', r => nf(r.l.qty)), col('c_hsd', 'm', r => esc(r.l.code || '—')), col('c_out', 'n b a', r => esc(r.l.out)),
+    ], rows) + note(T('pc_note'));
   };
-  return head;
+  return '';
 }
 
-function pcSheet() {
-  const it = pcItems().find(i => i.ten === S.sheet.ten);
-  if (!it) return '';
-  const c = core.calcItem(it);
-  const box = (f, v, lab) => `<label>${esc(lab)}<input data-fld="${f}" class="${v > 0 ? '' : 'miss'}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${v || ''}" placeholder="?"></label>`;
-  return `<div class="grab"></div><h4><span>${esc(it.ten)}</span><span class="num">${nf(it.qty)}</span></h4><div class="sub num">${esc(it.codes.join(','))}</div>
-    <div class="fields">${box('full', c.full, T('pc_full'))}${box('per', c.per, T('pc_base'))}${box('layers', c.layers, T('pc_high'))}</div>
-    <div class="sub" id="pcCap">${pcCapText(c)}</div><div class="note">${esc(T('pc_hint'))}</div><div id="pcRes">${pcResHtml(c)}</div>
-    <div class="act" style="margin-top:10px"><button class="btn pri flex" data-a="close">${esc(T('pc_close'))}</button></div>`;
-}
-const pcCapText = c => c.cap ? `= ${c.cap} ${T('pc_cap')}` : T('per_pallet');
-const pcResHtml = c => c.lots.map(l => `<div class="row plain" style="padding-inline:0"><div class="mm"><div class="hs">${esc(l.code || '—')}${c.lots.length > 1 ? '*' + l.qty : ''}</div></div>
-  <div class="q" style="font-size:15px">${esc(l.out)} <span class="g-dim">|</span> <span style="color:var(--acc)">${l.pull ?? '—'}</span></div></div>`).join('');
-
-function wOrders() {
-  if (!D.xeList.length) return '';
-  if (!S.ordXe || !D.xeList.includes(S.ordXe)) S.ordXe = D.xeList[0];
-  const head = chips('ox', D.xeList.map(x => [x, x.replace(/^[A-Z]+-/, '')]), S.ordXe);
-  bodyFn = () => {
-    const rows = [...(D.rowsByXe.get(S.ordXe) || [])].sort((a, b) => a.don.localeCompare(b.don));
-    return `<div class="sub tot"><b class="mono">${esc(S.ordXe)}</b> · ${esc(T('orders_n', new Set(rows.map(r => r.don)).size, rows.length))}</div>`
-      + tbl([col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten) + palMark(r)), col('c_ma', 'm', r => esc(r.ma)), col('c_qty', 'n b', r => nf(r.qty))], rows);
-  };
-  return head;
-}
-
-// ── Tab Tra cứu ─────────────────────────────────────────────────────────────
+// ── Tab Tra cứu: Dòng hàng · Tìm hàng ───────────────────────────────────────
 function vFind() {
-  if (!D) return needData();
-  const ph = S.find === 'item' ? T('ph_item') : S.find === 'veh' ? T('ph_xe') : T('ph_search');
-  let head = search(ph) + seg('fd', [['line', T('seg_lines')], ['item', T('seg_item')], ['veh', T('seg_veh')]], S.find);
-  if (S.find === 'line') head += chips('dx', [['', T('all')], ...D.xeList.map(x => [x, x.replace(/^[A-Z]+-/, '')])], S.dataXe);
-  const LIMIT = 150, cut = rows => rows.slice(0, LIMIT);
+  if (!D) return empty(T('need_data'), T('need_data2'));
+  let head = search(S.find === 'item' ? T('ph_item') : T('ph_search')) + seg('fd', [['line', T('seg_lines')], ['item', T('seg_item')]], S.find);
+  if (S.find === 'line') head += chips('dx', [['', T('all')], ...D.xeList.map(x => [x, xeShort(x)])], S.dataXe);
   bodyFn = () => {
     const q = S.q.trim().toLowerCase();
     if (S.find === 'item') {
+      // Hàng ở đầu, rồi Xe · Đơn · Số lượng
       const rows = D.items.filter(i => !q || (i.ten + ' ' + i.ma.join(' ')).toLowerCase().includes(q))
-        .flatMap(i => i.rows.map(r => ({ ...r, ten: i.ten, ma: i.ma.join(',') })));
-      if (!rows.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-      return sumLine(rows.length, rows.reduce((s, r) => s + r.qty, 0))
-        + tbl([col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)), col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_qty', 'n b', r => nf(r.qty))],
-               cut(rows), r => `data-v="${esc(r.xe)}"`)
-        + (rows.length > LIMIT ? `<div class="note">${esc(T('more_rows', rows.length - LIMIT))}</div>` : '') + `<div class="note">${esc(T('item_note'))}</div>`;
+        .flatMap(i => i.rows.map(r => ({ ...r, ten: i.ten })));
+      if (!rows.length) return empty(T('no_match'));
+      return sumLine(`${rows.length} ${T('lines')}`, nf(rows.reduce((s, r) => s + r.qty, 0)))
+        + tbl([col('c_ten', 'b', r => esc(r.ten)), col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_qty', 'n b', r => nf(r.qty))], rows.slice(0, LIMIT))
+        + cap(rows.length);
     }
-    if (S.find === 'veh') {
-      const list = D.stats.filter(v => !q || v.xe.toLowerCase().includes(q)).sort((a, b) => a.xe.localeCompare(b.xe));
-      if (!list.length) return `<div class="empty">${esc(T('hsd_none_xe'))}</div>`;
-      return vehTable(list, 'data-detail="1"');
-    }
-    const rows = D.noHsd.filter(r => (!S.dataXe || r.xe === S.dataXe) && (!q || [r.xe, r.don, r.khach, r.ma, r.ten].join(' ').toLowerCase().includes(q)));
-    if (!rows.length) return `<div class="empty">${esc(T('no_match'))}</div>`;
-    return sumLine(rows.length, rows.reduce((s, r) => s + r.qty, 0))
-      + tbl([col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_khach', 's', r => esc(r.khach)), col('c_ten', 'b', r => esc(r.ten) + palMark(r)), col('c_ma', 'm', r => esc(r.ma)), col('c_qty', 'n b', r => nf(r.qty))], cut(rows))
-      + (rows.length > LIMIT ? `<div class="note">${esc(T('more_rows', rows.length - LIMIT))}</div>` : '');
+    // Khách · Xe · Đơn · Mã · Hàng · Số lượng
+    const rows = D.noHsd.filter(r => (!S.dataXe || r.xe === S.dataXe) && (!q || [r.khach, r.xe, r.don, r.ma, r.ten].join(' ').toLowerCase().includes(q)));
+    if (!rows.length) return empty(T('no_match'));
+    return sumLine(`${rows.length} ${T('lines')}`, nf(rows.reduce((s, r) => s + r.qty, 0)))
+      + tbl([col('c_khach', 's', r => esc(r.khach)), col('c_xe', 'm', r => esc(r.xe)), col('c_don', 'm', r => esc(r.don)), col('c_ma', 'm', r => esc(r.ma)),
+             col('c_ten', 'b', r => esc(r.ten)), col('c_qty', 'n b', r => nf(r.qty))], rows.slice(0, LIMIT))
+      + cap(rows.length);
   };
   return head;
-}
-
-// ── Tab Thêm ────────────────────────────────────────────────────────────────
-function vMore() {
-  const d = S.data, v = S.vitri, o = S.doiBan;
-  const src = x => (x.source === 'import' ? T('src_import') : T('src_bundled'));
-  const li = (i, t, ds, attrs = '', right = '<span class="chev">›</span>') => `<button class="li" ${attrs}><span class="i">${i}</span><span><div class="t">${esc(t)}</div><div class="d">${ds}</div></span>${right}</button>`;
-  const miss = missingXe();
-  const themeName = S.theme === 'dark' ? T('theme_dark') : S.theme === 'light' ? T('theme_light') : T('theme_auto');
-  return `<h2>${esc(T('staff'))}</h2><div class="card list">${S.staff.map((s, i) =>
-      `<div class="stf${s.active ? '' : ' off'}"><span class="i" style="width:30px;height:30px;border-radius:9px;background:var(--s2);display:grid;place-items:center">👤</span><span class="nm">${esc(s.name)}</span>
-       <button class="wt" data-wt="${i}">${esc(s.weight)}</button><button class="sw${s.active ? ' on' : ''}" data-act="${i}" aria-label="${esc(s.name)}"></button></div>`).join('') || `<div class="note">—</div>`}</div>
-    <div class="note">${esc(T('staff_note'))}</div>
-    ${miss.length ? `<h2>${esc(T('missing_xe'))}</h2><div class="card" style="padding:10px 12px"><span class="mono">${esc(miss.join(' · '))}</span></div>` : ''}
-    <h2>${esc(T('data_cfg'))}</h2><div class="card list">
-      ${li('📄', T('data_today'), d ? `${esc(d.filename)} · ${esc(T('lines_n', d.main.length))} · ${esc(new Date(d.loadedAt).toLocaleString())}` : esc(T('not_yet')), 'data-a="pick"')}
-      ${li('🗂', T('vitri'), v ? `${esc(v.filename)} · ${Object.keys(v.byMa).length} · ${esc(src(v))}` : esc(T('not_yet')), 'disabled', '')}
-      ${li('🔁', T('doiban'), o ? `${esc(o.filename)} · ${Object.keys(o.dict).length} · ${esc(src(o))}` : esc(T('not_yet')), 'disabled', '')}
-      ${(v?.source === 'import' || o?.source === 'import') ? li('↺', T('use_bundled'), esc(T('use_bundled_sub')), 'data-a="bundled"') : ''}
-      ${li('✓', T('ticks'), String(Object.keys(S.ticks).length), 'data-a="clearTicks"', `<span class="btn">${esc(T('clear'))}</span>`)}
-      ${li('▦', T('manual'), String(Object.keys(S.manual).length), 'data-a="clearManual"', `<span class="btn">${esc(T('clear'))}</span>`)}
-      ${li('🗑', T('clear_all'), esc(T('clear_all_sub')), 'data-a="clearAll"', `<span class="btn warn" id="clearAllLbl">${esc(T('clear_all_btn'))}</span>`)}
-    </div>
-    <h2>${esc(T('lang'))}</h2><div class="card" style="padding:8px">${seg('lg', LANGS.map(([k, l]) => [k, l]), S.lang)}<div style="height:2px"></div></div>
-    <h2>${esc(T('theme'))}</h2><div class="card list">${li('◐', T('theme'), esc(themeName), 'data-a="theme"')}</div>
-    <div class="cap">Aegis Flow Mobile · v8 · ${esc(T('offline'))}</div>`;
-}
-
-// ── Bảng trượt từ dưới lên ──────────────────────────────────────────────────
-function openSheet(s) { S.sheet = s; $('#toast').hidden = true; renderSheet(); $('#sheet').classList.add('on'); $('#scrim').classList.add('on'); }
-function closeSheet() { S.sheet = null; $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on'); }
-function renderSheet() {
-  if (!S.sheet) return;
-  const el = $('#sheet'), y = el.scrollTop;
-  el.innerHTML = S.sheet.type === 'veh' ? vehSheet() : pcSheet();
-  el.scrollTop = y;
-  if (!el.innerHTML) closeSheet();
 }
 
 // ── Sự kiện ─────────────────────────────────────────────────────────────────
@@ -424,91 +242,21 @@ function applyTheme() {
   if (S.theme) document.documentElement.dataset.theme = S.theme; else delete document.documentElement.dataset.theme;
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', S.theme === 'light' ? '#eef1f7' : '#0b0f17');
 }
-const worstText = () => { const w = S.disp.worst(); return !w ? '—' : w === 'balanced' ? T('balanced') : `${w[0]} ${w[1] > 0 ? '+' : '−'}${Math.abs(w[1])}%`; };
 
 document.addEventListener('click', e => {
   const c = e.target.closest.bind(e.target);
   let x;
   if ((x = c('.nav button'))) return go(x.dataset.t);
-  if ((x = c('[data-go]'))) { const [a, b] = x.dataset.go.split(':'); return go(a, b); }
-  if (e.target.id === 'scrim') return closeSheet();
-  if ((x = c('[data-seg]'))) { S.seg = x.dataset.seg; S.q = ''; store.set('seg', S.seg); return render(); }
+  if ((x = c('[data-seg]'))) { S.seg = x.dataset.seg; store.set('seg', S.seg); return render(); }
   if ((x = c('[data-fd]'))) { S.find = x.dataset.fd; S.q = ''; return render(); }
-  if ((x = c('[data-sf]'))) { S.swapFilter = x.dataset.sf; return render(); }
-  if ((x = c('[data-pf]')) && x.tagName === 'BUTTON') { S.pcFilter = x.dataset.pf; return render(); }
   if ((x = c('[data-hx]'))) { S.hsdXe = x.dataset.hx; return render(); }
-  if ((x = c('[data-ox]'))) { S.ordXe = x.dataset.ox; return render(); }
   if ((x = c('[data-dx]'))) { S.dataXe = x.dataset.dx; return render(); }
   if ((x = c('[data-lg]'))) { S.lang = x.dataset.lg; store.set('lang', S.lang); T = makeT(S.lang); return render(); }
-  if ((x = c('[data-sh]'))) { S.sheet.tab = x.dataset.sh; return renderSheet(); }
-  if ((x = c('[data-st]'))) { S.pick = S.pick === x.dataset.st ? null : x.dataset.st; return render(); }
-  if ((x = c('[data-v]'))) { return openSheet({ type: 'veh', xe: x.dataset.v, tab: x.dataset.detail ? 'detail' : 'give' }); }
-  if ((x = c('[data-give]'))) {
-    const xe = S.sheet.xe, name = x.dataset.give;
-    S.disp.give(xe, name || null);
-    toast(name ? T('given', xe, name) : T('unassigned_t', xe), { undo: true });
-    closeSheet(); return render();
-  }
-  if ((x = c('[data-tick]'))) {
-    const k = x.dataset.tick;
-    if (S.ticks[k]) delete S.ticks[k]; else S.ticks[k] = 1;
-    store.set('ticks', S.ticks);
-    return render();
-  }
-  if ((x = c('[data-pc]'))) return openSheet({ type: 'pc', ten: x.dataset.pc });
-  if ((x = c('[data-wt]'))) { const s = S.staff[+x.dataset.wt]; s.weight = core.WEIGHTS[(core.WEIGHTS.indexOf(s.weight) + 1) % core.WEIGHTS.length]; return render(); }
-  if ((x = c('[data-act]'))) { const s = S.staff[+x.dataset.act]; s.active = !s.active; return render(); }
-  if (!(x = c('[data-a]'))) return;
-  switch (x.dataset.a) {
-    case 'close': closeSheet(); return;
-    case 'pick': $('#fileInput').click(); return;
-    case 'undo': if (S.disp?.undo()) { toast(T('undone')); render(); } return;
-    case 'auto': {
-      const n = S.disp.autoPending();
-      if (n === -1) return toast(T('no_staff'), { err: true });
-      if (n === 0) return toast(T('auto_none'));
-      render(); return toast(T('auto_done', n, worstText()), { undo: true });
-    }
-    case 'rebal': {
-      const n = S.disp.rebalance();
-      if (n === -1) return toast(T('rebal_none'));
-      if (n === 0) return toast(T('rebal_stuck'), { err: true });
-      render(); return toast(T('rebal_done', n, worstText()), { undo: true });
-    }
-    case 'theme': S.theme = S.theme === '' ? 'dark' : S.theme === 'dark' ? 'light' : ''; store.set('theme', S.theme); applyTheme(); return render();
-    case 'bundled':
-      if (S.vitri?.source === 'import') { S.vitri = null; store.del('vitri'); }
-      if (S.doiBan?.source === 'import') { S.doiBan = null; store.del('doiban'); }
-      loadBundledConfig().then(() => { render(); toast(T('bundled_used')); }); return;
-    case 'clearTicks': S.ticks = {}; store.set('ticks', {}); return render();
-    case 'clearManual': S.manual = {}; store.set('manual', {}); return render();
-    case 'clearAll':
-      if (!x.dataset.sure) { x.dataset.sure = 1; $('#clearAllLbl').textContent = T('sure'); return; }
-      ['data', 'vitri', 'doiban', 'listxe', 'manual', 'ticks'].forEach(store.del);
-      Object.assign(S, { data: null, vitri: null, doiBan: null, listXe: [], manual: {}, ticks: {}, staff: [] });
-      derive(); loadBundledConfig().then(() => render()); render(); return;
-  }
+  if ((x = c('[data-th]'))) { S.theme = x.dataset.th; store.set('theme', S.theme); applyTheme(); return render(); }
 });
 
 document.addEventListener('input', e => {
-  const el = e.target;
-  if (el.id === 'q') { S.q = el.value; $('#res').innerHTML = bodyFn(); return; }
-  if (!el.dataset.fld || el.tagName !== 'INPUT' || S.sheet?.type !== 'pc') return;
-  // Nhập thông số PCHome: ghi nhập tay (chỉ giá trị khác file cấu hình), cập nhật bảng kết quả — không dựng lại bảng để không mất con trỏ
-  const key = S.sheet.ten, item = pcItems().find(i => i.ten === key); if (!item) return;
-  el.value = el.value.replace(/\D/g, '');
-  const get = f => parseInt($(`#sheet [data-fld="${f}"]`).value, 10) || 0;
-  const per = get('per'), layers = get('layers'), full = get('full'), s = item.spec;
-  const baseManual = per > 0 && layers > 0 && !(s.per === per && s.layers === layers);
-  const fullManual = full > 0 && full !== s.full;
-  if (baseManual || fullManual) S.manual[key] = { per: baseManual ? per : 0, layers: baseManual ? layers : 0, full: fullManual ? full : 0 };
-  else delete S.manual[key];
-  store.set('manual', S.manual);
-  const c = core.calcItem({ ...item, manual: S.manual[key] || null });
-  for (const [f, v] of [['full', full], ['per', per], ['layers', layers]]) $(`#sheet [data-fld="${f}"]`).classList.toggle('miss', !(v > 0));
-  $('#pcCap').textContent = pcCapText(c);
-  $('#pcRes').innerHTML = pcResHtml(c);
-  render(true);
+  if (e.target.id === 'q') { S.q = e.target.value; $('#res').innerHTML = bodyFn(); }
 });
 
 $('#fileInput').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) importFiles(f); });

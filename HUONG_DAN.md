@@ -14,18 +14,14 @@ Mở địa chỉ bằng **Safari** → Chia sẻ → **Thêm vào Màn hình ch
 ## 3. Dùng hằng ngày
 1. Chuyển file Excel dữ liệu ngày (全虹…xlsx) sang iPhone (Zalo, AirDrop, iCloud), lưu vào **Files**.
 2. Mở app → **Nạp file** → chọn file. **Không cần nạp file cấu hình**: `vi_tri_kho_config` và `doi_ban_config` đã có sẵn trong app.
-3. Muốn dùng file cấu hình khác tạm thời thì cứ nạp tay, app sẽ ưu tiên file đó. Vào **Cài đặt → Dùng lại cấu hình có sẵn** để quay về.
 
-## 3b. Năm tab trong app
-- **Hôm nay:** số lượng tổng, số lượng nhặt lẻ (tải chia đơn), tiến độ HSD / Chia đơn / Đổi bản / PCHome, cảnh báo.
-- **Chia đơn:** thẻ nhân viên (% tải), bấm xe → chọn người nhận hoặc xem chi tiết (theo đơn / bảng phẳng). Chia tự động, Cân bằng, Hoàn tác. Kết quả chia **không được lưu**: tắt app là mất.
-- **Việc làm:** HSD đầu ca, Đổi bản, PCHome (bấm mặt hàng để nhập 整板 / 底 × 高), Đơn xe. Bấm dòng để đánh dấu ✓.
-- **Tra cứu:** Dòng hàng, Tìm hàng, Theo xe.
-- **Thêm:** nhân sự đi làm hôm nay (bật tắt, đổi năng lực), xe không giao hàng, dữ liệu & cài đặt, ngôn ngữ (Việt · 中文 · English), giao diện sáng/tối.
+## 3b. Ba tab trong app
+Bản điện thoại chỉ để xem dữ liệu, không in, không chia đơn.
+- **Trang chủ:** Nạp file · Bình khí (CO2F7, CO2F5, N2F13) · Xe không giao hàng · Dữ liệu đổi bản. Dưới cùng chọn ngôn ngữ (Việt · 中文 · English) và giao diện sáng/tối.
+- **Việc làm:** hai tab con. **HSD**: các xe hôm nay có hàng phải nhặt theo hạn sử dụng (bấm số xe để lọc). **PCHome**: Hàng · SL · HSD · Bản/Lẻ, xếp số lượng từ lớn đến nhỏ.
+- **Tra cứu:** **Dòng hàng** (Khách · Xe · Đơn · Mã · Hàng · SL) và **Tìm hàng** (Hàng · Xe · Đơn · SL).
 
-Mọi danh sách dữ liệu (Dòng hàng, Tìm hàng, Theo xe, HSD, Đổi bản, PCHome, Đơn xe, chi tiết xe) là **bảng phẳng**: mỗi dòng một mặt hàng, có tiêu đề cột, không gom nhóm. Bấm dòng để đánh dấu ✓ (HSD, Đổi bản, PCHome) hoặc mở xe (Chia đơn, Tìm hàng, Theo xe).
-
-Bản điện thoại chỉ để xem, không có chức năng in. Danh sách nhân sự và xe lấy từ thư mục `Config` khi chạy `build_site.ps1`.
+Mọi danh sách là bảng phẳng: mỗi dòng một mặt hàng, có tiêu đề cột.
 
 ## 4. Khi sửa file cấu hình hoặc app
 1. Sửa `vi_tri_kho_config.xlsx` / `doi_ban_config.xlsx` trong thư mục `Config` của app Windows như bình thường.

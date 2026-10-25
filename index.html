@@ -17,23 +17,16 @@
 </head>
 <body>
 <div class="phone" id="phone">
-  <header class="bar">
-    <div class="ttl"><h1 id="title">Hôm nay</h1><span id="fileName" class="sub"></span></div>
-    <label class="ico" for="fileInput" id="loadBtn" role="button" aria-label="Nạp file">⤒</label>
-    <input id="fileInput" type="file" multiple hidden
-           accept=".xlsx,.xlsm,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
-  </header>
+  <header class="bar"><h1 id="title">Trang chủ</h1></header>
   <main class="screen" id="screen"></main>
   <nav class="nav" id="nav" aria-label="Tab">
     <button data-t="home"><b>◈</b><span></span></button>
-    <button data-t="disp"><b>⇄</b><span></span></button>
-    <button data-t="work"><b>☑</b><span></span><i class="dot" hidden></i></button>
+    <button data-t="work"><b>☑</b><span></span></button>
     <button data-t="find"><b>⌕</b><span></span></button>
-    <button data-t="more"><b>≡</b><span></span></button>
   </nav>
-  <div class="scrim" id="scrim"></div>
-  <div class="sheet" id="sheet" role="dialog"></div>
   <div class="toast" id="toast" role="status" hidden></div>
+  <input id="fileInput" type="file" multiple hidden
+         accept=".xlsx,.xlsm,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
 </div>
 
 <script src="vendor/xlsx.full.min.js"></script>
