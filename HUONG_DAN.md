@@ -16,6 +16,15 @@ Mở địa chỉ bằng **Safari** → Chia sẻ → **Thêm vào Màn hình ch
 2. Mở app → **Nạp file** → chọn file. **Không cần nạp file cấu hình**: `vi_tri_kho_config` và `doi_ban_config` đã có sẵn trong app.
 3. Muốn dùng file cấu hình khác tạm thời thì cứ nạp tay, app sẽ ưu tiên file đó. Vào **Cài đặt → Dùng lại cấu hình có sẵn** để quay về.
 
+## 3b. Năm tab trong app
+- **Hôm nay:** số lượng tổng, số lượng nhặt lẻ (tải chia đơn), tiến độ HSD / Chia đơn / Đổi bản / PCHome, cảnh báo.
+- **Chia đơn:** thẻ nhân viên (% tải), bấm xe → chọn người nhận hoặc xem chi tiết (theo đơn / bảng phẳng). Chia tự động, Cân bằng, Hoàn tác. Kết quả chia **không được lưu**: tắt app là mất.
+- **Việc làm:** HSD đầu ca, Đổi bản, PCHome (bấm mặt hàng để nhập 整板 / 底 × 高), Đơn xe. Bấm dòng để đánh dấu ✓.
+- **Tra cứu:** Dòng hàng, Tìm hàng, Theo xe.
+- **Thêm:** nhân sự đi làm hôm nay (bật tắt, đổi năng lực), xe không giao hàng, dữ liệu & cài đặt, ngôn ngữ (Việt · 中文 · English), giao diện sáng/tối.
+
+Bản điện thoại chỉ để xem, không có chức năng in. Danh sách nhân sự và xe lấy từ thư mục `Config` khi chạy `build_site.ps1`.
+
 ## 4. Khi sửa file cấu hình hoặc app
 1. Sửa `vi_tri_kho_config.xlsx` / `doi_ban_config.xlsx` trong thư mục `Config` của app Windows như bình thường.
 2. Chạy `tools\build_site.ps1` (tôi sẽ chạy giúp) — nó đọc lại hai file đó vào `docs/config.json`.

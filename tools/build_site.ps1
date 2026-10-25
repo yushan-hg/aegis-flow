@@ -5,7 +5,7 @@ $site = Join-Path $root 'docs'
 if (Test-Path $site) { Remove-Item $site -Recurse -Force }
 New-Item -ItemType Directory $site | Out-Null
 New-Item -ItemType Directory (Join-Path $site 'vendor') | Out-Null
-foreach ($f in 'index.html','style.css','app.js','core.js','sw.js','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png') {
+foreach ($f in 'index.html','style.css','app.js','core.js','dispatch.js','i18n.js','sw.js','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png') {
   Copy-Item (Join-Path $root $f) $site
 }
 Copy-Item (Join-Path $root 'vendor\xlsx.full.min.js') (Join-Path $site 'vendor')

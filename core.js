@@ -368,3 +368,74 @@ export function calcItem(item) {
   // full = 整板書量 (nguyên bản); nFull/nLoose/nPull = tổng bản đầy / lẻ / bản nguyên phải lôi
   return { ...e, cap, nFull: full, nLoose: loose, nPull: pull, lots, complete: cap > 0 && e.full > 0 };
 }
+
+// ── Bỏ dòng có HSD, thống kê xe, tìm hàng (đúng như DataManager bên app Windows) ─────────────
+
+/** Trừ số lượng đã có trong sheet HSD (cùng xe + đơn + mã, có ghi hạn) khỏi từng dòng; 板位數 phần còn lại tính theo tỉ lệ. */
+export function excludeHsd(main, hsd) {
+  const left = new Map();
+  for (const h of hsd) {
+    if (!t(h.hsd)) continue;
+    const k = [h.xe, h.don, h.ma].join('\u0001');
+    left.set(k, (left.get(k) || 0) + h.qty);
+  }
+  const out = [];
+  for (const r of main) {
+    const k = [r.xe, r.don, r.ma].join('\u0001');
+    const q = left.get(k) || 0;
+    if (q <= 0) { out.push(r); continue; }
+    const take = Math.min(q, r.qty);
+    left.set(k, q - take);
+    const rest = r.qty - take;
+    if (rest <= 0) continue;
+    out.push({ ...r, qty: rest, pallet: r.qty > 0 ? r.pallet * rest / r.qty : 0 });
+  }
+  return out;
+}
+
+/** Thống kê từng xe: nguyên bản, bản đổi (flip), nhặt lẻ = nguyên bản − flip. Sắp theo nhặt lẻ giảm dần. */
+export function buildStats(rows) {
+  const m = new Map();
+  for (const r of rows) {
+    const s = m.get(r.xe) ?? m.set(r.xe, { xe: r.xe, nguyen: 0, flip: 0, nhatLe: 0, flipPallets: 0 }).get(r.xe);
+    s.nguyen += r.qty;
+    if (r.pallet >= PALLET_THRESHOLD) { s.flip += r.qty; s.flipPallets += r.pallet; }
+  }
+  const list = [...m.values()];
+  for (const s of list) s.nhatLe = s.nguyen - s.flip;
+  return list.sort((a, b) => b.nhatLe - a.nhatLe);
+}
+
+/** Tìm hàng: mỗi mặt hàng → tổng và từng (xe, đơn). */
+export function buildItems(rows) {
+  const m = new Map();
+  for (const r of rows) {
+    if (!r.ten) continue;
+    const it = m.get(r.ten) ?? m.set(r.ten, { ten: r.ten, ma: new Set(), qty: 0, per: new Map() }).get(r.ten);
+    it.ma.add(r.ma); it.qty += r.qty;
+    const k = r.xe + '\u0001' + r.don;
+    const e = it.per.get(k);
+    if (e) e.qty += r.qty; else it.per.set(k, { xe: r.xe, don: r.don, khach: r.khach, qty: r.qty });
+  }
+  return [...m.values()].sort((a, b) => a.ten.localeCompare(b.ten)).map(it => ({
+    ten: it.ten, ma: [...it.ma].filter(Boolean), qty: it.qty,
+    rows: [...it.per.values()].sort((a, b) => a.xe.localeCompare(b.xe) || a.don.localeCompare(b.don)),
+  }));
+}
+
+/** list_xe_config.xlsx → [{taiXe, xe}] */
+export function parseListXe(rows) {
+  const hdr = (rows[0] || []).map(t);
+  const cX = hdr.indexOf(COL.XE), cT = hdr.indexOf('司機姓名');
+  if (cX < 0) return [];
+  const out = [];
+  for (let r = 1; r < rows.length; r++) {
+    const xe = t((rows[r] || [])[cX]); if (!xe) continue;
+    out.push({ taiXe: cT >= 0 ? t(rows[r][cT]) : '', xe });
+  }
+  return out;
+}
+
+/** Danh sách nhân sự (staff_dynamic_config_v3.json) → [{name, weight:'100%', active}] */
+export const WEIGHTS = ['100%', '75%', '65%', '50%'];
+export const weightRatio = w => ({ '100%': 1, '75%': 0.75, '65%': 0.65, '50%': 0.5 }[w] ?? 1);
