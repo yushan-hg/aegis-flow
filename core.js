@@ -4,7 +4,7 @@
 export const PALLET_THRESHOLD = 0.65;      // 板位數 từ mức này trở lên là hàng đổi bản
 export const PCHOME = 'Pchome十五庫';
 // Xe không giao hàng: bỏ mọi dòng có số xe chứa một trong các mã này (sheet Data lẫn sheet HSD)
-const EXCLUDE_XE = ['KEV-5601', 'CA99'];
+const EXCLUDE_XE = ['KEV-5601', 'CA99', '46T', '46TT'];
 const excludedXe = xe => EXCLUDE_XE.some(x => xe.toLowerCase().includes(x.toLowerCase()));
 
 const COL = { KHACH: '送達方小名', XE: '車牌號', DON: '裝運單號', MA: '物料號', TEN: '物料小名',
