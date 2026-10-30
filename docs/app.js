@@ -219,8 +219,9 @@ function wHsd(list) {
     const sel = S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list;
     const rows = sel.flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe, khach: r.khach || d.khach }))));
     return sumLine(T('xe_lines', sel.length, rows.length))
-      + tbl([col('c_xe', 'm', r => esc(r.xe), true), col('c_loc', 'm', r => esc(r.loc)),
+      + tbl([col('c_xe', 'm', r => esc(r.xe), true),
              col('c_khach_lb', 's', r => `<b>${esc(r.khach || '—')}</b><div class="lb">${esc(loaiBan(r.khach))}</div>`, true),
+             col('c_loc', 'm', r => esc(r.loc)),
              col('c_ten', 'b', r => esc(r.ten) + `<div class="cd">${esc(r.ma)}</div>`),   // mã hàng nằm dưới tên hàng cho đỡ rộng
              col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_qty', 'n b', r => nf(r.qty))], rows);
   };
@@ -287,7 +288,7 @@ function vMore() {
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
     + heading(T('clear_all'))
     + `<button class="btn wide warn" data-a="clearAll">${esc(sureClear ? T('sure') : T('clear_all_btn'))}</button><div class="note">${esc(T('clear_all_sub'))}</div>`
-    + `<div class="cap">Aegis Flow Mobile · v18 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v19 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Sự kiện ─────────────────────────────────────────────────────────────────
