@@ -104,3 +104,7 @@ tr.done td.g{opacity:1}
 
 .kpis.big{margin-top:10px} .kpis.big b{font-size:28px} .kpis.big small{font:700 10.5px var(--sans);text-transform:uppercase;letter-spacing:.4px} .kpis .a b{color:var(--acc)}
 .li .d{white-space:pre-line}
+.lb{margin-top:2px;font:700 10.5px var(--sans);color:var(--acc)} td.s b{color:var(--fg);font-size:11px}
+.cd{font:600 10px var(--mono);color:var(--mute);margin-top:1px}
+th.s{white-space:normal;min-width:0;line-height:1.2}
+@media (max-width:340px){table{font-size:10.5px} th,td{padding-left:2px;padding-right:2px} th:first-child,td:first-child{padding-left:5px} th:last-child,td:last-child{padding-right:5px} td.n.b{font-size:12px}}

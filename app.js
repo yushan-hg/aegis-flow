@@ -130,6 +130,8 @@ const seg = (attr, list, cur) => `<div class="seg">${list.map(([k, l, n]) => `<b
 const chips = (attr, list, cur) => `<div class="chips">${list.map(([k, l, sm]) => `<button class="chip${cur === k ? ' on' : ''}" data-${attr}="${esc(k)}">${esc(l)}${sm ? `<small>${esc(sm)}</small>` : ''}</button>`).join('')}</div>`;
 const note = s => `<div class="note">${esc(s)}</div>`;
 const empty = (a, b) => `<div class="empty"><b>${esc(a)}</b>${b ? esc(b) : ''}</div>`;
+// Loại bản (換板需求) của khách theo doi_ban_config; khách không có trong danh sách thì '—'
+const loaiBan = khach => { const v = S.doiBan && khach ? core.matchPallet(S.doiBan.dict, khach) : ''; return v && v !== '######' ? v : '—'; };
 const hsdText = h => String(h || '').split(/[\/+]/).map(s => esc(s.trim())).filter(Boolean).join('<br>') || '—';
 const xeShort = x => x.replace(/^[A-Z]+-/, '');
 const sumLine = (...parts) => `<div class="tot">${parts.map(esc).join(' · ')}</div>`;
@@ -215,9 +217,11 @@ function wHsd(list) {
   const chipHead = chips('hx', [['', T('all')], ...list.map(x => [x.xe, xeShort(x.xe), `${x.count}`])], S.hsdXe);
   bodyFn = () => {
     const sel = S.hsdXe ? list.filter(x => x.xe === S.hsdXe) : list;
-    const rows = sel.flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe }))));
+    const rows = sel.flatMap(x => x.dons.flatMap(d => d.rows.map(r => ({ ...r, xe: x.xe, khach: r.khach || d.khach }))));
     return sumLine(T('xe_lines', sel.length, rows.length))
-      + tbl([col('c_xe', 'm', r => esc(r.xe), true), col('c_loc', 'm', r => esc(r.loc)), col('c_ten', 'b', r => esc(r.ten)), col('c_ma', 'm', r => esc(r.ma)),
+      + tbl([col('c_xe', 'm', r => esc(r.xe), true), col('c_loc', 'm', r => esc(r.loc)),
+             col('c_khach_lb', 's', r => `<b>${esc(r.khach || '—')}</b><div class="lb">${esc(loaiBan(r.khach))}</div>`, true),
+             col('c_ten', 'b', r => esc(r.ten) + `<div class="cd">${esc(r.ma)}</div>`),   // mã hàng nằm dưới tên hàng cho đỡ rộng
              col('c_hsd', 'm', r => hsdText(r.hsd)), col('c_qty', 'n b', r => nf(r.qty))], rows);
   };
   return chipHead;
@@ -283,7 +287,7 @@ function vMore() {
     + heading(T('theme')) + seg('th', [['', T('theme_auto')], ['dark', T('theme_dark')], ['light', T('theme_light')]], S.theme)
     + heading(T('clear_all'))
     + `<button class="btn wide warn" data-a="clearAll">${esc(sureClear ? T('sure') : T('clear_all_btn'))}</button><div class="note">${esc(T('clear_all_sub'))}</div>`
-    + `<div class="cap">Aegis Flow Mobile · v17 · ${esc(T('offline'))}</div>`;
+    + `<div class="cap">Aegis Flow Mobile · v18 · ${esc(T('offline'))}</div>`;
 }
 
 // ── Sự kiện ─────────────────────────────────────────────────────────────────
